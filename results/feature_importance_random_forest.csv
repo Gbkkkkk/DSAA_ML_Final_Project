@@ -1,0 +1,21 @@
+feature,importance
+cat__Payment Format_ACH,0.33228379090728943
+num__log_amount_received,0.07089987419275662
+cat__Payment Format_Cheque,0.06931377538611597
+num__log_amount_paid,0.06728922488588941
+num__sender_out_degree,0.04867458723744671
+num__receiver_in_degree,0.045307116133582785
+cat__Payment Format_Credit Card,0.04345673889578589
+num__sender_unique_receivers,0.034212954868057005
+num__receiver_unique_senders,0.0272930557069608
+num__sample_sender_out_degree,0.02381297605874691
+num__sender_total_sent,0.01781424869616648
+num__receiver_total_received,0.015038097113788153
+num__receiver_pagerank,0.014778429743587724
+num__sent_received_ratio,0.014761688597364696
+num__sample_receiver_in_degree,0.014401972345009667
+cat__Payment Format_Reinvestment,0.014062523810984379
+cat__Payment Format_Cash,0.014013696571668538
+num__hour,0.013892403630618473
+num__weekday,0.013089820158102974
+num__sender_mean_sent,0.01292000969395965
