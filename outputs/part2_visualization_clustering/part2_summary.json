@@ -1,0 +1,80 @@
+{
+  "best_internal_method": {
+    "method": "DBSCAN (eps=3.5)",
+    "n_clusters_ex_noise": 3,
+    "noise_rate": 0.0015,
+    "silhouette": 0.5297041425557192,
+    "davies_bouldin": 0.5775164014603459,
+    "calinski_harabasz": 1639.7722839460887,
+    "highest_cluster_laundering_rate": 0.4975124378109453
+  },
+  "top_high_risk_clusters": [
+    {
+      "method": "MiniBatch K-Means (k=7)",
+      "cluster": 6,
+      "transactions": 871,
+      "laundering": 865,
+      "laundering_rate": 0.9931113662456946,
+      "enrichment_vs_sample": 2.238249642203504,
+      "dominant_payment_format": "ACH",
+      "dominant_payment_currency": "US Dollar",
+      "mean_Amount Paid": 1520294.70934558,
+      "mean_log_amount_paid": 9.626591330743898,
+      "mean_sender_out_degree": 5.066590126291619,
+      "mean_receiver_in_degree": 14.83926521239954,
+      "mean_sender_unique_receivers": 2.148105625717566,
+      "mean_receiver_unique_senders": 11.571756601607348,
+      "mean_sent_received_ratio": 38.742569397722214,
+      "mean_same_bank": 0.02640642939150402,
+      "mean_same_currency": 1.0
+    },
+    {
+      "method": "Gaussian Mixture (k=7)",
+      "cluster": 5,
+      "transactions": 1178,
+      "laundering": 1138,
+      "laundering_rate": 0.966044142614601,
+      "enrichment_vs_sample": 2.177246208281724,
+      "dominant_payment_format": "ACH",
+      "dominant_payment_currency": "US Dollar",
+      "mean_Amount Paid": 870238.8289591027,
+      "mean_log_amount_paid": 9.649173126045488,
+      "mean_sender_out_degree": 6.3174872665534805,
+      "mean_receiver_in_degree": 12.49830220713073,
+      "mean_sender_unique_receivers": 3.2444821731748728,
+      "mean_receiver_unique_senders": 9.32258064516129,
+      "mean_sent_received_ratio": 1453.993874785446,
+      "mean_same_bank": 0.017826825127334467,
+      "mean_same_currency": 1.0
+    },
+    {
+      "method": "MiniBatch K-Means (k=7)",
+      "cluster": 3,
+      "transactions": 1526,
+      "laundering": 932,
+      "laundering_rate": 0.6107470511140236,
+      "enrichment_vs_sample": 1.3764864798603191,
+      "dominant_payment_format": "ACH",
+      "dominant_payment_currency": "US Dollar",
+      "mean_Amount Paid": 114537.76875877654,
+      "mean_log_amount_paid": 8.503527386878899,
+      "mean_sender_out_degree": 17.134338138925294,
+      "mean_receiver_in_degree": 1.9868938401048493,
+      "mean_sender_unique_receivers": 13.444954128440367,
+      "mean_receiver_unique_senders": 1.480340760157274,
+      "mean_sent_received_ratio": 12593.534300119325,
+      "mean_same_bank": 0.014416775884665793,
+      "mean_same_currency": 1.0
+    }
+  ],
+  "generated_figures": [
+    "01_tsne_by_laundering_label.png",
+    "02_tsne_by_kmeans_cluster.png",
+    "03_tsne_by_dbscan_cluster.png",
+    "04_tsne_by_gmm_cluster.png",
+    "05_kmeans_k_sweep.png",
+    "06_clustering_metric_comparison.png",
+    "07_high_risk_cluster_laundering_rates.png",
+    "08_high_risk_cluster_profile_heatmap.png"
+  ]
+}
