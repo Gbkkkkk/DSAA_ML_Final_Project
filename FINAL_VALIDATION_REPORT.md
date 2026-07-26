@@ -1,6 +1,6 @@
 # Final Validation Report
 
-Validation date: 2026-07-24
+Validation date: 2026-07-26
 
 ## Status
 
@@ -18,8 +18,6 @@ This report is intentionally outside `zxszeto_group_IBM_AML.zip`.
 - `requirements_zxszeto_group_IBM_AML.txt`
 - `README.md`
 - `zxszeto_group_IBM_AML.zip`
-- `src/create_latex_report_source.py` in the working project, for consistency
-  with the final report source
 
 ## Contribution and GenAI Checks
 
@@ -118,15 +116,21 @@ non-preprint mode:
 - Compiled twice from the report workspace: PASS
 - Compiled twice from the clean staging root: PASS
 - Compiled twice from the freshly extracted ZIP root: PASS
-- Pages: 6
+- Pages: 10 total; references begin on page 10, so the main report remains
+  within the course's suggested 5--10 page range excluding references
 - LaTeX errors: none
 - Undefined controls: none
 - Undefined citations/references: none
 - Overfull boxes: none
 - Preprint/anonymous/under-review PDF text: none
 
-All six final pages were rendered and inspected. No clipping, overlap, broken
+All ten final pages were rendered and inspected. No clipping, overlap, broken
 figures, or unreadable contribution text was found.
+
+The expanded discussion adds research motivation, a failure-driven account of
+model development, protocol interpretation boundaries, AML investigation
+support, system-level implications, and a practical next-stage design. No
+experimental value was changed or added without execution.
 
 ## Presentation
 
@@ -187,8 +191,8 @@ distinction among the three evaluation protocols are all preserved.
 PASS. The following standalone files are byte-identical to the same-named ZIP
 entries:
 
-- Report PDF: `b7b131deec8cde50e014db7c9694150194280666f4e3c7e62945101b672a8d76`
-- Report TEX: `e2889c1597faef99f0716846bfcc7df5dd9bf01606a3b900da0d370ff070275b`
+- Report PDF: `3e6c1d546376456f7871e1aafd03bc306551d5f51d19f938e9c85b27098ef8de`
+- Report TEX: `1424593857d6c1a1b556aa39d6771fe91ff0c895d83a56eb75177d2369987242`
 - Presentation PDF: `93e7d5f55b72dc108b913f61feff037aa0ce3c080de01cc203f6979e90dde177`
 - Notebook: `c5a81b3b5c947b0c41d01117a1dede69107a628af4ec2928cf3d909816a529ae`
 - Requirements: `fd3a81a79984cd59e0db9276c44a7c0e3b989c8b1b42475ee301861729280b1d`

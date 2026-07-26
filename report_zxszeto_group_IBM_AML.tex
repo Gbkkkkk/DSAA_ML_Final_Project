@@ -22,7 +22,11 @@ Group: zxszeto's group (zxszeto\_group)}
 \maketitle
 
 \section{Introduction}
-This project studies the IBM synthetic AML transaction dataset. The full dataset contains 5,078,345 transactions, 5,177 laundering labels, and a positive rate of 0.1019\%. The central question is whether account graph features help after accounting for class imbalance and leakage risk.
+Anti-money-laundering (AML) detection is not an ordinary balanced classification problem. A monitoring system must search through a very large legitimate transaction stream for a very small number of suspicious events, while every alert consumes investigation capacity. In this setting, a model can appear accurate by predicting almost everything as legitimate and still be useless. The practical objective is therefore not to automate a final legal judgment; it is to rank transactions and accounts so that scarce human review is directed toward more informative cases.
+
+This project studies that problem using the IBM synthetic AML transaction dataset. The full dataset contains 5,078,345 transactions, 5,177 laundering labels, and a positive rate of 0.1019\%. A transaction row records an event, but laundering behavior may be expressed across a sequence or network of accounts. Our central question is therefore: \emph{do account graph features add useful context beyond transaction-level variables, and does any observed gain survive more realistic evaluation protocols?}
+
+The study makes three contributions. First, it connects the course methods---preprocessing, t-SNE, clustering, supervised learning, model selection, and feature selection---in one reproducible rare-event pipeline. Second, it evaluates graph-aware behavior features through explicit ablations rather than assuming that network context must help. Third, it treats evaluation design as part of the research question. The random/transductive split, natural class-prior stress test, and time-based leakage audit are deliberately separated because they measure different risks. This distinction turns out to be decisive: graph features improve sampled random-split ranking, but their advantage reverses under the train-history-only time audit.
 
 \begin{table}[H]
 \centering
@@ -43,14 +47,38 @@ Time split & Graph lift reverses & Audit leakage risk & Bounded deployment claim
 }
 \end{table}
 
+The sequence in Table 1 reflects how the analysis actually evolved. The first baseline exposed the accuracy illusion. Linear models then provided interpretable reference points but left substantial nonlinear structure unexplained. A single tree recovered more positives at the cost of many false alerts, motivating ensemble models. Graph features produced the strongest sampled-test result, but the natural-prior stress test revealed that good ranking does not automatically create a manageable alert queue. Finally, the time audit challenged the most attractive result. Rather than hiding that failure, we use it to narrow the final claim and identify the need for rolling historical graph construction.
+
 \section{Dataset and Experimental Protocol}
-The official dataset source is Kaggle/IBM. The scripts use a Hugging Face mirror only as a programmatic fallback. Full-data chunked statistics are used for EDA. t-SNE and DBSCAN are sampled for computational feasibility. Supervised modeling uses a stratified modeling sample containing all laundering transactions and sampled legitimate transactions.
+The official dataset source is Kaggle/IBM. The scripts use a Hugging Face mirror only as a programmatic fallback. The data are synthetic, which makes complete labels and large-scale experimentation possible without exposing private banking records. At the same time, synthetic generation can simplify customer behavior, institutional controls, and adversarial adaptation. We therefore treat the dataset as a controlled benchmark for comparing methods, not as direct evidence of performance at a real bank.
+
+Full-data statistics are computed in chunks so the reported base rate reflects all 5,078,345 rows. t-SNE and density-based clustering use samples for computational feasibility. Supervised model development uses a stratified modeling sample containing all laundering transactions and sampled legitimate transactions. This enrichment makes model comparison feasible and ensures that minority cases are represented, but it also changes the class prior. Consequently, sampled-test precision cannot be read as the precision of a production alert system.
 
 Three evaluations answer different questions. (1) The \emph{random/transductive sampled evaluation} compares models and ablations on the modeling sample. (2) The \emph{natural class-prior stress test} restores the full-data base rate to expose alert pressure. (3) The \emph{time-based leakage audit} orders the modeling sample by time and constructs graph statistics from training history only. These are separate protocols, not three views of one test set.
 
+\begin{table}[H]
+\centering
+\caption{Interpretation boundary for the three evaluation protocols.}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llll}
+\toprule
+Protocol & Primary question & What it supports & What it does not support \\
+\midrule
+Random/transductive sample & Which model ranks better? & Controlled model/feature comparison & Deployment performance \\
+Natural-prior stress & What happens when rarity returns? & Base-rate and alert-pressure diagnosis & Independent temporal validation \\
+Time-based audit & Does graph gain survive chronology? & Leakage sensitivity and robustness warning & Natural-prior simulation \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+Model thresholds are selected using validation data inside the training process and then held fixed for test evaluation. We emphasize precision, recall, F1, and especially PR-AUC because the positive class is rare. ROC-AUC remains useful as a ranking metric and is reported for completeness, but it can look strong even when the absolute number of false positives is operationally large. Confusion matrices and alerts per 10,000 transactions translate statistical performance into review workload.
+
 \section{Mandatory Tasks}
 \subsection{Preprocessing and EDA}
-We check missing values and duplicates, parse timestamps, one-hot encode currency and payment format, and standardize numeric features. Engineered transaction-level features include amount, log amount, hour, weekday, same-bank flag, and same-currency flag.
+We check missing values and duplicates, parse timestamps, one-hot encode currency and payment format, and standardize numeric features. Engineered transaction-level features include amount, log amount, hour, weekday, same-bank flag, and same-currency flag. Log amount reduces the influence of a long monetary tail, while hour and weekday preserve temporal regularity that a raw timestamp cannot express. Same-bank and same-currency indicators provide compact relational context without requiring a full graph model.
+
+The preprocessing design follows the training boundary: transformations are learned from training data and applied to held-out data. Account and bank identifiers are not treated as arbitrary continuous numbers. The goal is to retain behavior while avoiding meaningless numeric distance between IDs. Exploratory analysis is used to formulate hypotheses, not to select a result after seeing test labels. The most important EDA observation is the base rate itself: at 0.1019\%, accuracy is structurally incapable of summarizing minority-class usefulness.
 
 \subsection{t-SNE Visualization}
 \begin{figure}[H]
@@ -58,6 +86,8 @@ We check missing values and duplicates, parse timestamps, one-hot encode currenc
 \includegraphics[width=0.82\linewidth]{tsne_projection.png}
 \caption{t-SNE projection on a stratified transaction sample. Laundering samples form local neighborhoods but still overlap with legitimate transactions, so visualization does not replace supervised learning.}
 \end{figure}
+
+The t-SNE map changes our initial expectation. Laundering points are neither uniformly random nor cleanly separated. They form several local concentrations but overlap substantially with legitimate transactions. This suggests that suspiciousness is conditional on combinations of features and that a single global linear boundary is unlikely to be sufficient. It also warns against using a visually compelling embedding as proof of classification quality: t-SNE preserves local neighborhoods, distorts global distance, and is produced on an enriched sample.
 
 \subsection{KMeans and DBSCAN Clustering}
 KMeans and DBSCAN are applied to account-level behavior features. Purity is inflated by class imbalance, so it must be interpreted together with NMI and ARI.
@@ -92,8 +122,10 @@ Account DBSCAN & 0.478 & 0.001 & -0.008 & 0.763 & 0.848 \\
 }
 \end{table}
 
+The clustering results reinforce this mixed picture. DBSCAN has a higher silhouette score than KMeans, indicating more coherent geometry among its non-noise regions, but both NMI and ARI are close to zero. Thus, cluster structure and laundering labels describe different partitions of the data. The maximum DBSCAN risk value of 0.848 belongs specifically to label $-1$, the small noise/outlier group in the modeling account sample. It is not 84.8\% accuracy, overall purity, or natural-prior precision. Its value is investigative: the method isolates a compact set worth profiling, but it does not produce a reliable laundering classifier. This failure is useful because it motivates supervised models while preserving clustering as an exploratory triage tool.
+
 \subsection{Supervised Model Training and Validation}
-We compare Dummy All-Legitimate, Logistic Regression, Linear SVM, Decision Tree, Random Forest, and HistGradientBoosting. Thresholds are selected on a validation split inside the training set.
+We compare Dummy All-Legitimate, Logistic Regression, Linear SVM, Decision Tree, Random Forest, and HistGradientBoosting. This sequence is intentionally progressive. The dummy model quantifies the accuracy trap; Logistic Regression and Linear SVM test whether a linear score is sufficient; the Decision Tree tests nonlinear interactions but is vulnerable to unstable partitions; Random Forest and HistGradientBoosting test whether ensembles can improve ranking and control variance. Thresholds are selected on a validation split inside the training set rather than tuned on the final test labels.
 \begin{table}[H]
 \centering
 \caption{Sampled-test model comparison.}
@@ -114,6 +146,8 @@ Dummy All-Legitimate & 0.000 & 0.500 & 0.031 \\
 \end{tabular}
 }
 \end{table}
+
+The ordering in Table 4 is more informative than a single winning number. Logistic Regression and Linear SVM reach similar F1 but modest PR-AUC, suggesting that the encoded transaction space is not well described by one linear boundary. The Decision Tree increases recall-oriented F1 but produces weaker ranking than the ensembles. Both Random Forest and HistGradientBoosting improve when graph context is added. The selected HGB + Graph model achieves sampled-test precision 0.670, recall 0.590, F1 0.628, and PR-AUC 0.721. These values describe a controlled, enriched modeling sample; the later stress tests determine how far that result can be trusted.
 
 \begin{figure}[H]
 \centering
@@ -152,14 +186,18 @@ Full modeling sample & 0.699 & 0.621 & 0.658 & 0.982 & 0.756 \\
 \includegraphics[width=0.62\linewidth]{confusion_matrix_histgradientboosting_plus_graph_features_test.png}
 \caption{Sampled-test confusion matrix for the HistGradientBoosting model with graph features. This matrix makes the trade-off between recovered laundering transactions and false alerts explicit.}
 \end{figure}
-Train and full-sample confusion matrices are provided in the executed notebook.
+The sampled-test confusion matrix contains 917 true positives, 636 false negatives, 451 false positives, and 47,550 true negatives. The model therefore recovers a meaningful share of labeled laundering transactions, but it still misses 41\% of positives in this sampled test and creates false alerts. Whether this balance is acceptable depends on investigation cost and regulatory risk, not only on F1. Train and full-sample confusion matrices are provided in the executed notebook. The moderate train--test gap in Table 5 also argues against describing the result as perfect fitting; the model generalizes within this protocol, but protocol shift remains the larger concern.
 
 \section{Open-ended Exploration}
 \subsection{Account Graph Feature Engineering}
-Account features include in/out degree, unique counterparties, total sent/received amount, PageRank, fan-in, fan-out, and scatter-gather proxies.
+Transaction-level variables answer ``what happened in this payment?'' Graph features ask ``how does this payment fit the account's broader behavior?'' We construct directed account relationships and derive in/out degree, unique counterparties, total sent/received amount, PageRank, fan-in, fan-out, and scatter-gather proxies. These features represent concentration, reach, flow asymmetry, and network position without requiring a full graph neural network.
+
+This change in unit of analysis is the main open-ended contribution. A transfer of a moderate amount may be ordinary in isolation but unusual when an account rapidly collects from many sources and redistributes to many destinations. Conversely, a large transaction may be legitimate when it is consistent with an account's historical role. Graph context can therefore reduce ambiguity that cannot be resolved from one row. The danger is that graph statistics can accidentally summarize future or test-set edges. For that reason, the feature gain must be paired with a chronology-aware audit.
 
 \subsection{Model and Feature Ablation}
 The main random/transductive split result is HGB + Graph with F1=0.628, ROC-AUC=0.976, and PR-AUC=0.721. Adding graph features changes Random Forest F1 by +0.062 and PR-AUC by +0.131; for HGB the changes are +0.088 F1 and +0.166 PR-AUC. These random/transductive gains should not be overstated as deployment improvement.
+
+The fact that two different ensemble families improve supports the hypothesis that account context contains useful signal within the random/transductive protocol. However, an ablation identifies association under a specified data construction; it does not prove causal or future predictive value. Some graph features are aggregates over relationships that span the modeling graph, so a random edge split can let training and test transactions share account context. This is why the time audit is not an optional extra check but a direct test of the mechanism behind the gain.
 
 \subsection{Mutual-information Top-k Feature Selection}
 \begin{table}[H]
@@ -180,10 +218,12 @@ All graph features (pipeline result) &  & 0.628 & 0.721 &  \\
 \end{tabular}
 }
 \end{table}
-Top-20 MI features retain most sampled-test performance while reducing feature dimensionality and training time.
+Top-20 MI features retain most sampled-test performance while reducing feature dimensionality and training time. Their PR-AUC of 0.699 is below the all-feature value of 0.721, but training time falls from 2.41 to 1.16 seconds in this experiment. The result shows a gradual rather than binary trade-off: five features discard too much information, ten recover more, and twenty preserve most ranking quality. In a larger tuning or monitoring system, a smaller feature set could reduce maintenance and latency, but the all-feature model remains the strongest sampled-test choice here.
 
 \subsection{Natural Class-prior Stress Test}
 The natural class-prior stress test contains 1,501,553 rows, positive rate 0.1034\%, precision 0.83\%, recall 53.70\%, F1 0.016, ROC-AUC 0.907, PR-AUC 0.009, FP 99,113, and TP 834. It triggers 665.6 alerts per 10,000 transactions. This experiment primarily isolates the effect of restoring the natural class prior. It is not a fully independent temporal deployment evaluation because evaluation sampling and graph-statistic construction may retain transductive elements.
+
+This is the most important operational failure mode. A model can rank cases well on an enriched sample and still overwhelm investigators when the legitimate population returns. At the validation-selected threshold, roughly 6.7\% of transactions would generate alerts, even though only about 0.1\% are labeled laundering. The result does not mean the model has no value: recall remains 53.70\% and ROC-AUC remains 0.907. It means that threshold choice must be linked to an explicit review budget, and that probability or score calibration under the target prior matters. Ranking quality and alert policy are separate design problems.
 
 \begin{figure}[H]
 \centering
@@ -208,11 +248,31 @@ time\_based\_60\_20\_20 & HGB Graph, time split with train-only graph features &
 \end{table}
 The time split is conducted on the modeling sample, whose positive rate is approximately 5.32\%; it is a leakage audit rather than a natural-prior deployment simulation. HGB Base obtains F1=0.662 and PR-AUC=0.683, whereas HGB Graph falls to F1=0.483 and PR-AUC=0.459. Graph behavior features are promising, but random-split gains are sensitive to protocol design. Rolling historical graph features are needed before making deployment claims.
 
+The direction of the graph effect changes from +0.166 PR-AUC in the random/transductive comparison to approximately $-0.224$ in the time audit. This negative result is not directly comparable as a deployment estimate because the time-test positive rate is 5.32\% and the protocol is designed to audit chronology rather than reproduce the natural class prior. Nevertheless, the reversal is strong evidence that graph features are sensitive to when their underlying edges become available. In a real monitoring pipeline, every account statistic should be computed as of the transaction timestamp, using only prior history. The honest conclusion is therefore conditional: graph features are informative in retrospective analysis, but their prospective value remains unproven.
+
+\section{Operational and Research Implications}
+\subsection{From Prediction to Investigation Support}
+The project is most useful as a study of triage design. AML analysts do not need a model that merely outputs a label; they need a ranked queue with enough contextual information to decide which cases deserve investigation. Transaction features provide event-level reasons, while graph features can provide account-level context such as unusual fan-in, fan-out, or counterparty reach. Used responsibly, such a system could help investigators prioritize network patterns that are difficult to find with fixed amount rules alone. The model should remain decision support: a flag is a prompt for review, not evidence of wrongdoing.
+
+\subsection{Why the Macro Result Matters}
+At a broader level, the experiments show that AML model quality depends on three interacting systems. The \emph{statistical system} determines ranking quality; the \emph{data system} determines whether features are available without future leakage; and the \emph{operational system} determines how many alerts humans can investigate. Optimizing only the classifier leaves two-thirds of the problem unsolved. The natural-prior test connects scores to workload, while the time audit connects feature engineering to data availability. This systems view is more transferable than the exact score of one synthetic benchmark.
+
+The study also demonstrates why negative findings are valuable. If we had stopped after the random split, the report would claim a clear graph-feature improvement. The later audits reveal a more useful lesson: promising retrospective features can fail when prevalence and chronology change. For research, this motivates evaluation protocols that model deployment conditions. For organizations, it argues for monitoring precision, recall, alert volume, feature drift, and temporal data lineage after deployment rather than treating a one-time test score as permanent evidence.
+
+\subsection{A Practical Next-stage Design}
+A stronger follow-up system would maintain rolling account features at multiple historical windows, calibrate scores on a validation period with the natural prior, and select thresholds from investigation capacity. It would report performance by time period, payment format, currency, and account behavior segment to identify drift or uneven error concentration. Analysts could receive both the transaction score and a compact explanation of the relevant behavior features. Confirmed investigation outcomes would then feed a delayed, carefully governed retraining process. These steps are not evaluated in the present project, but they follow directly from its observed failure modes.
+
 \section{Discussion and Limitations}
-Limitations include the synthetic AML dataset, strong class imbalance, random-split transductive leakage risk, natural-prior stress test not being a fully independent temporal test, time-split modeling sample positive rate of 5.32\%, operational alert-budget calibration, and lack of rolling historical graph construction.
+The first limitation is external validity. The IBM data provide scale and complete synthetic labels, but they cannot reproduce every customer, institution, jurisdiction, or adaptive criminal strategy. A result on this benchmark should be viewed as evidence about modeling behavior, not a guaranteed real-world detection rate. Real labels are also delayed and incomplete because an alert is not the same as confirmed laundering.
+
+The second limitation is evaluation construction. The random/transductive sample is appropriate for controlled model comparison but may share account context across splits. The natural-prior stress test diagnoses base-rate effects, yet it is not a fully independent temporal test. The time split uses train-history-only graph features, but its test positive rate is approximately 5.32\%, so it is a leakage audit rather than a natural-prior deployment simulation. No single protocol in this project simultaneously provides natural prevalence, fully independent accounts, strict chronology, and realistic label delay.
+
+The third limitation is operational modeling. We report alert pressure, but we do not have a bank-specific investigation budget, monetary cost matrix, or feedback process. Different institutions may choose very different precision--recall trade-offs. We also do not measure latency for continuously updated graph features, calibration stability, fairness across customer groups, or adversarial adaptation. These omissions bound the final claim and motivate rolling historical graph construction, out-of-time validation, account-disjoint testing, calibrated alert budgets, and human-in-the-loop evaluation.
 
 \section{Conclusion}
-The project completes preprocessing, t-SNE, KMeans/DBSCAN clustering, supervised model training, validation, train/test/full evaluation, ROC/AUC, graph-feature ablation, top-k feature selection, natural class-prior stress testing, and leakage auditing. The final claim is bounded: graph features help in random/transductive sampled evaluation, but deployment claims require stricter temporal protocols.
+The project completes preprocessing, t-SNE, KMeans/DBSCAN clustering, supervised model training, validation, train/test/full evaluation, ROC/AUC and PR-AUC analysis, graph-feature ablation, top-k feature selection, natural class-prior stress testing, and leakage auditing. The strongest sampled-test model is HistGradientBoosting with graph features, with F1 0.628 and PR-AUC 0.721. That result supports the idea that transactions become more informative when interpreted in account context.
+
+The more important conclusion is methodological. Accuracy fails under extreme rarity; clustering can reveal investigation regions without matching labels; sampled ranking gains can collapse into large alert queues; and graph improvements can reverse when features are restricted to prior history. Therefore, this study does not claim a deployment-ready detector. It provides a reproducible demonstration of how to move from row-level prediction toward graph-aware AML triage while testing the assumptions that make such a system credible. Its practical value is the combination of model comparison, workload awareness, and leakage discipline---not a single headline metric.
 
 \section{References}
 \begin{enumerate}
