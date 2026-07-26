@@ -26,7 +26,7 @@ Anti-money-laundering (AML) detection is not an ordinary balanced classification
 
 This project studies that problem using the IBM synthetic AML transaction dataset. The full dataset contains 5,078,345 transactions, 5,177 laundering labels, and a positive rate of 0.1019\%. A transaction row records an event, but laundering behavior may be expressed across a sequence or network of accounts. Our central question is therefore: \emph{do account graph features add useful context beyond transaction-level variables, and does any observed gain survive more realistic evaluation protocols?}
 
-The study makes three contributions. First, it connects the course methods---preprocessing, t-SNE, clustering, supervised learning, model selection, and feature selection---in one reproducible rare-event pipeline. Second, it evaluates graph-aware behavior features through explicit ablations rather than assuming that network context must help. Third, it treats evaluation design as part of the research question. The random/transductive split, natural class-prior stress test, and time-based leakage audit are deliberately separated because they measure different risks. This distinction turns out to be decisive: graph features improve sampled random-split ranking, but their advantage reverses under the train-history-only time audit.
+The study makes three contributions. First, it connects the course methods---preprocessing, t-SNE, clustering, supervised learning, formal cross-validation, and feature selection---in one reproducible rare-event pipeline. Second, it evaluates graph-aware behavior features through explicit ablations rather than assuming that network context must help. Third, it treats feature availability as part of the research question. A retrospective random graph, a frozen training snapshot, and a strict expanding history are deliberately separated because they represent different information sets. This distinction is decisive: a frozen snapshot fails under chronology, whereas transaction-by-transaction history restores a positive graph contribution without using future edges.
 
 \begin{table}[H]
 \centering
@@ -41,20 +41,21 @@ LR / Linear SVM & Weak PR-AUC & Try nonlinear models & Tree/RF/HGB \\
 Decision Tree & Many false positives & Use ensembles & More stable ranking \\
 Base RF/HGB & No account context & Add graph features & Random-split PR-AUC improves \\
 Natural prior & Precision collapses & Alert-budget sweep & Operational trade-off exposed \\
-Time split & Graph lift reverses & Audit leakage risk & Bounded deployment claim \\
+Frozen time snapshot & Graph lift reverses & Diagnose representation & History must update online \\
+Strict expanding history & Prior edges only & Retune and retest & Time-test PR-AUC improves \\
 \bottomrule
 \end{tabular}
 }
 \end{table}
 
-The sequence in Table 1 reflects how the analysis actually evolved. The first baseline exposed the accuracy illusion. Linear models then provided interpretable reference points but left substantial nonlinear structure unexplained. A single tree recovered more positives at the cost of many false alerts, motivating ensemble models. Graph features produced the strongest sampled-test result, but the natural-prior stress test revealed that good ranking does not automatically create a manageable alert queue. Finally, the time audit challenged the most attractive result. Rather than hiding that failure, we use it to narrow the final claim and identify the need for rolling historical graph construction.
+The sequence in Table 1 reflects how the analysis actually evolved. The first baseline exposed the accuracy illusion. Linear models then provided interpretable reference points but left substantial nonlinear structure unexplained. A single tree recovered more positives at the cost of many false alerts, motivating ensembles. Graph features produced the strongest sampled-test result, but the natural-prior test exposed an unmanageable alert queue. The first time audit then failed because one training-period snapshot could not update for later transactions. We retained that negative result, rebuilt account and edge statistics before each transaction using only earlier rows, and retested. This failure--diagnosis--repair sequence is the central open-ended result.
 
 \section{Dataset and Experimental Protocol}
 The official dataset source is Kaggle/IBM. The scripts use a Hugging Face mirror only as a programmatic fallback. The data are synthetic, which makes complete labels and large-scale experimentation possible without exposing private banking records. At the same time, synthetic generation can simplify customer behavior, institutional controls, and adversarial adaptation. We therefore treat the dataset as a controlled benchmark for comparing methods, not as direct evidence of performance at a real bank.
 
 Full-data statistics are computed in chunks so the reported base rate reflects all 5,078,345 rows. t-SNE and density-based clustering use samples for computational feasibility. Supervised model development uses a stratified modeling sample containing all laundering transactions and sampled legitimate transactions. This enrichment makes model comparison feasible and ensures that minority cases are represented, but it also changes the class prior. Consequently, sampled-test precision cannot be read as the precision of a production alert system.
 
-Three evaluations answer different questions. (1) The \emph{random/transductive sampled evaluation} compares models and ablations on the modeling sample. (2) The \emph{natural class-prior stress test} restores the full-data base rate to expose alert pressure. (3) The \emph{time-based leakage audit} orders the modeling sample by time and constructs graph statistics from training history only. These are separate protocols, not three views of one test set.
+Three evaluation families answer different questions. (1) The \emph{random/transductive sampled evaluation} compares models and ablations, including training-only three-fold grid search. (2) The \emph{natural class-prior stress test} restores the full-data base rate to expose alert pressure. (3) The \emph{temporal evaluation} first records the failure of a frozen training snapshot and then tests strict expanding-history features computed before each transaction. These are separate protocols, not interchangeable views of one test set.
 
 \begin{table}[H]
 \centering
@@ -66,7 +67,8 @@ Protocol & Primary question & What it supports & What it does not support \\
 \midrule
 Random/transductive sample & Which model ranks better? & Controlled model/feature comparison & Deployment performance \\
 Natural-prior stress & What happens when rarity returns? & Base-rate and alert-pressure diagnosis & Independent temporal validation \\
-Time-based audit & Does graph gain survive chronology? & Leakage sensitivity and robustness warning & Natural-prior simulation \\
+Frozen-snapshot audit & Why does temporal graph performance fail? & Representation mismatch diagnosis & Prospective graph value \\
+Strict expanding history & Do prior-only updates help later rows? & Chronological feature ablation & Natural-prior simulation \\
 \bottomrule
 \end{tabular}
 }
@@ -148,6 +150,34 @@ Dummy All-Legitimate & 0.000 & 0.500 & 0.031 \\
 \end{table}
 
 The ordering in Table 4 is more informative than a single winning number. Logistic Regression and Linear SVM reach similar F1 but modest PR-AUC, suggesting that the encoded transaction space is not well described by one linear boundary. The Decision Tree increases recall-oriented F1 but produces weaker ranking than the ensembles. Both Random Forest and HistGradientBoosting improve when graph context is added. The selected HGB + Graph model achieves sampled-test precision 0.670, recall 0.590, F1 0.628, and PR-AUC 0.721. These values describe a controlled, enriched modeling sample; the later stress tests determine how far that result can be trusted.
+
+\subsection{Formal Cross-validation and Grid Search}
+We next tune Logistic Regression, Decision Tree, Random Forest, and HGB using three-fold stratified GridSearchCV inside the 70\% training partition. Imputation, scaling, and one-hot encoding are fitted within each fold. Mean validation PR-AUC is the refit criterion; after hyperparameter selection, out-of-fold training scores choose the F1 threshold, and the held-out 30\% test partition is evaluated once.
+
+\begin{table}[H]
+\centering
+\caption{Training-only three-fold grid search and isolated test evaluation.}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrr}
+\toprule
+Model & Features & CV PR-AUC & SD & Test F1 & Test PR-AUC \\
+\midrule
+HGB & Retrospective graph & 0.721 & 0.005 & 0.633 & 0.723 \\
+HGB & Base & 0.561 & 0.009 & 0.545 & 0.556 \\
+Random Forest & Base & 0.553 & 0.011 & 0.538 & 0.553 \\
+Decision Tree & Base & 0.468 & 0.011 & 0.501 & 0.477 \\
+Logistic Regression & Base & 0.329 & 0.009 & 0.457 & 0.346 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\linewidth]{cross_validation_pr_auc.png}
+\caption{Mean validation PR-AUC for each best grid-search configuration; error bars are fold standard deviations. HGB with retrospective graph context is both strongest and stable within the random sampled protocol.}
+\end{figure}
+
+The best graph HGB uses learning rate 0.05, 31 leaf nodes, and L2 regularization 1.0. Its CV standard deviation of 0.005 makes the original model ordering less dependent on one validation split. Grid search nevertheless remains inside the retrospective protocol; chronology must still be tested through a different feature construction.
 
 \begin{figure}[H]
 \centering
@@ -231,24 +261,34 @@ This is the most important operational failure mode. A model can rank cases well
 \caption{Natural class-prior stress-test confusion matrix. Even a strong sampled-test model produces many false positives when evaluated against the full-data base rate, which motivates alert-budget threshold analysis.}
 \end{figure}
 
-\subsection{Time-based Leakage Audit}
+\subsection{Temporal Failure, Diagnosis, and Repair}
 \begin{table}[H]
 \centering
-\caption{Random/transductive graph gains are audited with a time-based split.}
+\caption{Chronological 60/20/20 experiments: frozen-snapshot failure and strict-history repair.}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{llrr}
 \toprule
 Protocol & Model & F1 & PR-AUC \\
 \midrule
-time\_based\_60\_20\_20 & HGB Base, time split & 0.662 & 0.683 \\
-time\_based\_60\_20\_20 & HGB Graph, time split with train-only graph features & 0.483 & 0.459 \\
+Frozen snapshot & HGB Base & 0.662 & 0.683 \\
+Frozen snapshot & HGB Graph & 0.483 & 0.459 \\
+Strict expanding history & Tuned HGB Base & 0.662 & 0.713 \\
+Strict expanding history & Tuned HGB History & 0.723 & 0.829 \\
 \bottomrule
 \end{tabular}
 }
 \end{table}
-The time split is conducted on the modeling sample, whose positive rate is approximately 5.32\%; it is a leakage audit rather than a natural-prior deployment simulation. HGB Base obtains F1=0.662 and PR-AUC=0.683, whereas HGB Graph falls to F1=0.483 and PR-AUC=0.459. Graph behavior features are promising, but random-split gains are sensitive to protocol design. Rolling historical graph features are needed before making deployment claims.
+The first audit maps one frozen training-period graph snapshot onto all later rows. It blocks future test edges but creates a representation mismatch: training aggregates summarize the whole training period, new accounts receive zeros, and validation/test activity never updates history. HGB Graph falls from base PR-AUC 0.683 to 0.459. We retain this failure because it reveals that ``train-only'' is insufficient when the representation itself should evolve online.
 
-The direction of the graph effect changes from +0.166 PR-AUC in the random/transductive comparison to approximately $-0.224$ in the time audit. This negative result is not directly comparable as a deployment estimate because the time-test positive rate is 5.32\% and the protocol is designed to audit chronology rather than reproduce the natural class prior. Nevertheless, the reversal is strong evidence that graph features are sensitive to when their underlying edges become available. In a real monitoring pipeline, every account statistic should be computed as of the transaction timestamp, using only prior history. The honest conclusion is therefore conditional: graph features are informative in retrospective analysis, but their prospective value remains unproven.
+The repair sorts all modeling rows and records each feature before the current edge updates state. It uses prior account counts and totals, repeated and reverse edges, unique counterparties, amount deviations, recency, and 24-hour/7-day activity. Labels never enter these aggregates. Base and history models receive the same 18-candidate temporal HGB search, selected on the chronological validation period. Validation PR-AUC rises from 0.539 to 0.687; final time-test PR-AUC rises from 0.713 to 0.829 and F1 from 0.662 to 0.723.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.76\linewidth]{time_based_history_ablation.png}
+\caption{Strict chronological test ablation. Expanding-history features improve both PR-AUC and F1 over an independently tuned base model.}
+\end{figure}
+
+The paired PR-AUC difference is +0.116. A 500-resample paired bootstrap gives a 95\% interval of [+0.100,+0.130], entirely above zero. This repairs the feature-availability failure, but it is still a modeling-sample time test with a 5.32\% positive rate, not a natural-prior deployment estimate.
 
 \section{Operational and Research Implications}
 \subsection{From Prediction to Investigation Support}
@@ -257,22 +297,22 @@ The project is most useful as a study of triage design. AML analysts do not need
 \subsection{Why the Macro Result Matters}
 At a broader level, the experiments show that AML model quality depends on three interacting systems. The \emph{statistical system} determines ranking quality; the \emph{data system} determines whether features are available without future leakage; and the \emph{operational system} determines how many alerts humans can investigate. Optimizing only the classifier leaves two-thirds of the problem unsolved. The natural-prior test connects scores to workload, while the time audit connects feature engineering to data availability. This systems view is more transferable than the exact score of one synthetic benchmark.
 
-The study also demonstrates why negative findings are valuable. If we had stopped after the random split, the report would claim a clear graph-feature improvement. The later audits reveal a more useful lesson: promising retrospective features can fail when prevalence and chronology change. For research, this motivates evaluation protocols that model deployment conditions. For organizations, it argues for monitoring precision, recall, alert volume, feature drift, and temporal data lineage after deployment rather than treating a one-time test score as permanent evidence.
+The study also demonstrates why negative findings are valuable. If we had stopped after the random split, the report would claim a graph-feature improvement without identifying its information boundary. The frozen-snapshot failure forced us to inspect the feature pipeline, distinguish a static training graph from an online history, and rerun the comparison fairly. The repaired result is stronger because it survives chronology for the right reason: every feature is available before its transaction. For organizations, the same logic argues for monitoring temporal data lineage rather than treating a one-time score as permanent evidence.
 
 \subsection{A Practical Next-stage Design}
-A stronger follow-up system would maintain rolling account features at multiple historical windows, calibrate scores on a validation period with the natural prior, and select thresholds from investigation capacity. It would report performance by time period, payment format, currency, and account behavior segment to identify drift or uneven error concentration. Analysts could receive both the transaction score and a compact explanation of the relevant behavior features. Confirmed investigation outcomes would then feed a delayed, carefully governed retraining process. These steps are not evaluated in the present project, but they follow directly from its observed failure modes.
+A stronger follow-up system would compute the demonstrated expanding-history features over the complete unsampled stream, add multiple rolling windows, calibrate scores on a later period with the natural prior, and select thresholds from investigation capacity. It would report performance by time period, payment format, currency, and account behavior segment to identify drift or uneven error concentration. Analysts could receive both the transaction score and a compact explanation of the relevant behavior features. Confirmed investigation outcomes would then feed a delayed, carefully governed retraining process.
 
 \section{Discussion and Limitations}
 The first limitation is external validity. The IBM data provide scale and complete synthetic labels, but they cannot reproduce every customer, institution, jurisdiction, or adaptive criminal strategy. A result on this benchmark should be viewed as evidence about modeling behavior, not a guaranteed real-world detection rate. Real labels are also delayed and incomplete because an alert is not the same as confirmed laundering.
 
-The second limitation is evaluation construction. The random/transductive sample is appropriate for controlled model comparison but may share account context across splits. The natural-prior stress test diagnoses base-rate effects, yet it is not a fully independent temporal test. The time split uses train-history-only graph features, but its test positive rate is approximately 5.32\%, so it is a leakage audit rather than a natural-prior deployment simulation. No single protocol in this project simultaneously provides natural prevalence, fully independent accounts, strict chronology, and realistic label delay.
+The second limitation is evaluation construction. The random/transductive sample is appropriate for controlled comparison but may share account context across splits. The natural-prior stress test diagnoses base-rate effects, yet it is not a fully independent temporal test. Strict expanding history removes future-edge leakage in the chronological modeling sample, but the sampled stream omits much legitimate account history and its test positive rate is approximately 5.32\%. No single protocol here simultaneously provides natural prevalence, complete prior transaction history, independent accounts, strict chronology, and realistic label delay.
 
 The third limitation is operational modeling. We report alert pressure, but we do not have a bank-specific investigation budget, monetary cost matrix, or feedback process. Different institutions may choose very different precision--recall trade-offs. We also do not measure latency for continuously updated graph features, calibration stability, fairness across customer groups, or adversarial adaptation. These omissions bound the final claim and motivate rolling historical graph construction, out-of-time validation, account-disjoint testing, calibrated alert budgets, and human-in-the-loop evaluation.
 
 \section{Conclusion}
-The project completes preprocessing, t-SNE, KMeans/DBSCAN clustering, supervised model training, validation, train/test/full evaluation, ROC/AUC and PR-AUC analysis, graph-feature ablation, top-k feature selection, natural class-prior stress testing, and leakage auditing. The strongest sampled-test model is HistGradientBoosting with graph features, with F1 0.628 and PR-AUC 0.721. That result supports the idea that transactions become more informative when interpreted in account context.
+The project completes preprocessing, t-SNE, KMeans/DBSCAN clustering, supervised training, train/test/full evaluation, ROC/AUC and PR-AUC analysis, formal three-fold grid search, graph and top-k ablations, natural-prior stress testing, temporal repair, and bootstrap uncertainty. Tuned retrospective HGB obtains mean CV PR-AUC 0.721 and test PR-AUC 0.723. More importantly, strict expanding history improves chronological test PR-AUC from 0.713 to 0.829 and F1 from 0.662 to 0.723.
 
-The more important conclusion is methodological. Accuracy fails under extreme rarity; clustering can reveal investigation regions without matching labels; sampled ranking gains can collapse into large alert queues; and graph improvements can reverse when features are restricted to prior history. Therefore, this study does not claim a deployment-ready detector. It provides a reproducible demonstration of how to move from row-level prediction toward graph-aware AML triage while testing the assumptions that make such a system credible. Its practical value is the combination of model comparison, workload awareness, and leakage discipline---not a single headline metric.
+The more important conclusion is methodological. Accuracy fails under extreme rarity; clustering can reveal investigation regions without matching labels; sampled ranking gains can collapse into large alert queues; and even a leakage-aware split can fail if account features are frozen rather than updated. The final positive temporal result supports graph-aware AML triage only when features are computed from strictly prior transactions. It still does not establish a deployment-ready detector: natural-prevalence, full-stream, out-of-time validation remains necessary. The project's practical value is the combination of model selection, workload awareness, failure diagnosis, and temporal data discipline---not a single headline metric.
 
 \section{References}
 \begin{enumerate}
@@ -287,6 +327,6 @@ The more important conclusion is methodological. Accuracy fails under extreme ra
 \section{Credit and GenAI Disclosure}
 Team contributions: Minghua XIONG was responsible for data processing. Bokang GAO and Zi Xuan SZETO were responsible for the remaining project components, including exploratory analysis, feature engineering, clustering, supervised modeling, model and feature ablation, natural class-prior stress testing, leakage auditing, report preparation, presentation design, and notebook integration.
 
-GenAI disclosure: Codex/ChatGPT was used for planning, debugging, visualization/report structuring, and language polishing. The team verified the code outputs, numerical results, and final interpretation. Estimated GenAI-assisted content: 25\%.
+GenAI disclosure: Codex/ChatGPT was used for planning, debugging, implementation assistance for model-selection and temporal-history experiments, visualization/report structuring, and language polishing. The team verified and reran the code, checked the numerical outputs, and reviewed the final interpretation. Estimated GenAI-assisted content: 25\%.
 
 \end{document}

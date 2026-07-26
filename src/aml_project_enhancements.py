@@ -1,3 +1,10 @@
+"""Open-ended AML experiments built on the core course pipeline.
+
+This module contains account-level clustering, mutual-information feature
+selection, feature-set ablations, the natural class-prior stress test, and the
+legacy frozen-snapshot time audit retained as a documented failure mode.
+"""
+
 from __future__ import annotations
 
 import json
@@ -80,6 +87,9 @@ ACCOUNT_FEATURES = [
     "max_sent_per_hour",
     "max_received_per_hour",
 ]
+
+
+# ---------- Account-level clustering ----------
 
 
 def purity_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
@@ -253,6 +263,7 @@ def run_account_level_clustering(df: pd.DataFrame) -> None:
 
 
 def run_feature_selection(df: pd.DataFrame) -> None:
+    """Rank encoded transaction and graph features by mutual information."""
     y = df["Is Laundering"].astype(int)
     x = df.drop(columns=["Is Laundering"])
     feature_set = BASE_NUMERIC + GRAPH_NUMERIC
@@ -297,6 +308,7 @@ def _best_f1_threshold(y_val: pd.Series, val_score: np.ndarray) -> float:
 
 
 def run_feature_selection_ablation(df: pd.DataFrame) -> None:
+    """Retrain HGB on top-k feature subsets to quantify the complexity trade-off."""
     y = df["Is Laundering"].astype(int)
     x = df.drop(columns=["Is Laundering"])
     x_train, x_test, y_train, y_test = train_test_split(
@@ -370,6 +382,7 @@ def run_feature_selection_ablation(df: pd.DataFrame) -> None:
 
 
 def add_graph_features_from_history(target: pd.DataFrame, history: pd.DataFrame) -> pd.DataFrame:
+    """Map one frozen history snapshot onto target rows (legacy audit design)."""
     target = target.copy()
     sent = history.groupby("from_account_id").agg(
         sender_out_degree=("to_account_id", "size"),
@@ -416,6 +429,7 @@ def add_graph_features_from_history(target: pd.DataFrame, history: pd.DataFrame)
 
 
 def evaluate_temporal_protocol(df: pd.DataFrame) -> None:
+    """Reproduce the frozen-snapshot audit that motivated strict online history."""
     raw = df[RAW_COLUMNS].copy()
     raw["Timestamp"] = pd.to_datetime(raw["Timestamp"], errors="coerce")
     raw = raw.sort_values("Timestamp").reset_index(drop=True)
@@ -434,7 +448,7 @@ def evaluate_temporal_protocol(df: pd.DataFrame) -> None:
     rows = []
     for label, features, train_df, val_df, test_df in [
         ("HGB Base, time split", BASE_NUMERIC, train_base, val_base, test_base),
-        ("HGB Graph, time split with train-only graph features", BASE_NUMERIC + GRAPH_NUMERIC, train_graph, val_graph, test_graph),
+        ("HGB Graph, frozen train snapshot", BASE_NUMERIC + GRAPH_NUMERIC, train_graph, val_graph, test_graph),
     ]:
         y_train = train_df["Is Laundering"].astype(int)
         y_val = val_df["Is Laundering"].astype(int)
@@ -465,7 +479,7 @@ def evaluate_temporal_protocol(df: pd.DataFrame) -> None:
         scores = _score_from_scores(y_test, test_score, threshold)
         rows.append(
             {
-                "protocol": "time_based_60_20_20",
+                "protocol": "time_based_60_20_20_frozen_snapshot",
                 "model": label,
                 "train_rows": len(train_df),
                 "validation_rows": len(val_df),
@@ -499,6 +513,7 @@ def load_negative_natural_sample(needed_negatives: int, chunksize: int = 500_000
 
 
 def run_natural_distribution_stress_test(df: pd.DataFrame) -> None:
+    """Restore the full-data class prior and translate scores into alert load."""
     raw_cols = [
         "Timestamp",
         "From Bank",

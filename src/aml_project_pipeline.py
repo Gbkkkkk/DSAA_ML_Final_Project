@@ -1,3 +1,11 @@
+"""Core DSAA2011 AML pipeline.
+
+The script processes the complete transaction file in chunks for descriptive
+statistics, creates the reproducible modeling sample, engineers transaction and
+retrospective account features, and runs the mandatory visualization,
+clustering, supervised-learning, and evaluation tasks.
+"""
+
 from __future__ import annotations
 
 import json
@@ -54,6 +62,9 @@ DATA_URL = (
 FIGURES = ROOT / "figures"
 RESULTS = ROOT / "results"
 RANDOM_STATE = 42
+
+
+# ---------- Data access and full-dataset descriptive statistics ----------
 
 
 def ensure_dirs() -> None:
@@ -202,6 +213,7 @@ def plot_eda(stats: dict) -> None:
 
 
 def load_model_sample(stats: dict, target_negatives: int = 160_000, chunksize: int = 500_000) -> pd.DataFrame:
+    """Keep all positives and reproducibly sample negatives for model development."""
     total_negatives = stats["total_rows"] - stats["positive_rows"]
     neg_frac = min(1.0, target_negatives / total_negatives)
     frames = []
@@ -219,6 +231,7 @@ def load_model_sample(stats: dict, target_negatives: int = 160_000, chunksize: i
 
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Create row-level time, amount, and relationship features."""
     df = df.copy()
     df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce")
     df["hour"] = df["Timestamp"].dt.hour.fillna(-1).astype(int)
@@ -235,6 +248,7 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_graph_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Create retrospective account aggregates for random-split experiments."""
     df = df.copy()
     sent = df.groupby("from_account_id").agg(
         sender_out_degree=("to_account_id", "size"),
@@ -304,6 +318,9 @@ CATEGORICAL = [
     "Receiving Currency",
     "Payment Format",
 ]
+
+
+# ---------- Shared preprocessing and mandatory unsupervised analysis ----------
 
 
 def make_preprocessor(numeric_features: list[str]) -> ColumnTransformer:
@@ -439,6 +456,7 @@ def score_classifier(
     y_eval: pd.Series,
     threshold: float,
 ) -> dict:
+    """Evaluate ranking and thresholded classification for one split."""
     if hasattr(model, "predict_proba"):
         y_score = model.predict_proba(x_eval)[:, 1]
     else:
@@ -456,6 +474,7 @@ def score_classifier(
     }
 
 def tune_threshold(y_val: pd.Series, y_score: np.ndarray) -> tuple[float, float]:
+    """Select the F1 operating threshold on validation predictions only."""
     precision, recall, thresholds = precision_recall_curve(y_val, y_score)
     f1_values = 2 * precision * recall / np.maximum(precision + recall, 1e-12)
     if not len(thresholds):
@@ -554,6 +573,7 @@ def evaluate_classifier(
 
 
 def run_supervised_models(df: pd.DataFrame) -> None:
+    """Fit mandatory baselines and nonlinear base/graph model ablations."""
     y = df["Is Laundering"].astype(int)
     x = df.drop(columns=["Is Laundering"])
     x_train, x_test, y_train, y_test = train_test_split(

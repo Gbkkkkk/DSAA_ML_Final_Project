@@ -1,0 +1,2 @@
+comparison,delta_f1,delta_pr_auc,base_pr_auc,history_pr_auc
+base -> strict expanding history,0.06083377442356164,0.11607247102296625,0.712663297409486,0.8287357684324522

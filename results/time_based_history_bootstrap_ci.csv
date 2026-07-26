@@ -1,0 +1,2 @@
+metric,point_estimate,ci_lower_95,ci_upper_95,bootstrap_resamples
+paired_bootstrap_delta_pr_auc,0.11607247102296625,0.1000000290091335,0.13014486085943772,500

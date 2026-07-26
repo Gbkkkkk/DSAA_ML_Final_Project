@@ -4,234 +4,188 @@ Validation date: 2026-07-26
 
 ## Status
 
-PASS. The final submission files were repaired, rebuilt, and independently
-validated from a freshly extracted ZIP.
+PASS. The final submission was rebuilt after adding formal cross-validation,
+grid search, and a strict expanding-history temporal repair. Validation was
+then repeated from a freshly extracted ZIP. This report is intentionally kept
+outside `zxszeto_group_IBM_AML.zip`.
 
-This report is intentionally outside `zxszeto_group_IBM_AML.zip`.
+## Modified Scope
 
-## Modified Files
+- Reworked `project_zxszeto_group_IBM_AML.ipynb` into an executed research
+  narrative with motivations, code explanations, observations, failure
+  diagnosis, and implementation appendices.
+- Added `src/aml_project_model_selection.py`.
+- Documented and clarified `src/aml_project_pipeline.py` and
+  `src/aml_project_enhancements.py`.
+- Added formal CV/grid-search and strict temporal result CSVs and figures.
+- Updated and rebuilt the report and presentation PDFs.
+- Updated `README.md` and rebuilt `zxszeto_group_IBM_AML.zip`.
 
-- `report_zxszeto_group_IBM_AML.tex`
-- `report_zxszeto_group_IBM_AML.pdf`
-- `presentation_zxszeto_group_IBM_AML.pdf`
-- `project_zxszeto_group_IBM_AML.ipynb`
-- `requirements_zxszeto_group_IBM_AML.txt`
-- `README.md`
-- `zxszeto_group_IBM_AML.zip`
+## Formal Model Selection
 
-## Contribution and GenAI Checks
+PASS. Model selection uses three-fold `GridSearchCV`, average precision as the
+refit metric, preprocessing inside each fold, out-of-fold threshold selection,
+and one untouched 30 percent test split. Five model/feature configurations were
+searched on the complete 165,177-row modeling sample.
 
-PASS. The contribution statement is consistent in the report and README:
+- Logistic Regression base: CV PR-AUC 0.329 +/- 0.009; test PR-AUC 0.346.
+- Decision Tree base: CV PR-AUC 0.468 +/- 0.011; test PR-AUC 0.477.
+- Random Forest base: CV PR-AUC 0.553 +/- 0.011; test PR-AUC 0.553.
+- HGB base: CV PR-AUC 0.561 +/- 0.009; test PR-AUC 0.556.
+- HGB retrospective graph: CV PR-AUC 0.721 +/- 0.005; test PR-AUC
+  0.723 and F1 0.633.
 
-> Team contributions: Minghua XIONG was responsible for data processing.
-> Bokang GAO and Zi Xuan SZETO were responsible for the remaining project
-> components, including exploratory analysis, feature engineering, clustering,
-> supervised modeling, model and feature ablation, natural class-prior stress
-> testing, leakage auditing, report preparation, presentation design, and
-> notebook integration.
+The candidate-level search table, selected parameters, fold dispersion,
+out-of-fold threshold, and held-out metrics are saved in
+`results/grid_search_candidates.csv` and
+`results/cross_validation_summary.csv`.
 
-No percentage contribution was assigned to any member.
+## Temporal Audit and Repair
 
-PASS. The report and README retain the required GenAI disclosure and the
-estimated GenAI-assisted content remains 25 percent.
+PASS. The original negative time audit is retained as a failure mode. A frozen
+training-period account snapshot scored PR-AUC 0.459 versus 0.683 for base
+features. This exposed a representation mismatch because later activity could
+not update the account state.
 
-## DBSCAN Wording
+The repair sorts all modeling rows chronologically and records every account,
+pair, reverse-pair, recency, rolling-activity, counterparty, and amount-history
+feature before the current transaction updates state. Base and strict-history
+HGB models each receive an independent 18-candidate search on the chronological
+validation period; the final test period is evaluated once.
 
-PASS. The value 0.848 is unchanged and was traced to
-`account_cluster_profiles.csv`, where the maximum laundering-account rate
-corresponds to `dbscan_cluster = -1`.
+- Chronological split: 60/20/20, with 99,106 train, 33,035 validation, and
+  33,036 test rows.
+- Tuned base: test PR-AUC 0.713 and F1 0.662.
+- Tuned strict expanding history: test PR-AUC 0.829 and F1 0.723.
+- Paired PR-AUC gain: +0.116.
+- Paired 500-resample bootstrap 95% interval: [+0.100, +0.130], entirely above
+  zero.
 
-- Report: identifies it as the small high-risk DBSCAN noise/outlier group,
-  label -1, in the modeling account sample.
-- Presentation slide 5: uses `DBSCAN noise/outlier-group maximum risk`.
-- Notebook: explains that it is not accuracy, purity, or natural-prior
-  deployment precision.
-- README: gives the same bounded interpretation.
-
-The low NMI and near-zero ARI remain visible. The clustering result is presented
-as an investigation signal, not as a classifier or deployment estimate.
-
-## Requirements
-
-Versions were queried from the actual Python 3.13 project environment. The
-final requirements file contains:
-
-```text
-ipykernel==7.3.0
-ipython==9.15.0
-jupyter-client==8.9.1
-jupyter-core==5.9.1
-matplotlib==3.10.8
-nbclient==0.11.0
-nbformat==5.10.4
-networkx==3.6.1
-numpy==2.4.4
-pandas==3.0.2
-pyarrow==23.0.1
-reportlab==4.4.10
-scikit-learn==1.8.0
-seaborn==0.13.2
-```
-
-PASS. A new virtual environment was created at
-`tmp/clean_env_20260724_2248`. Installation with
-`python -m pip install -r requirements_zxszeto_group_IBM_AML.txt` completed
-successfully.
-
-PASS. All notebook imports and both core scripts,
-`src/aml_project_pipeline.py` and `src/aml_project_enhancements.py`, imported
-successfully in that clean environment.
+This validates feature availability on the sampled chronological stream. It is
+not presented as a natural-prior or deployment-ready estimate.
 
 ## Notebook
 
-PASS. The notebook was executed in quick mode with the clean environment, first
-from a clean staging root and then from the freshly extracted final ZIP root.
+PASS. The notebook was executed from the final worktree and again from the
+freshly extracted ZIP using the clean project environment.
 
-- Total cells: 62
-- Markdown cells: 42
-- Code cells: 20
-- Code cells with execution counts: 20
-- Code cells with preserved outputs: 18
-- `RUN_FULL_PIPELINE = False`: confirmed
-- Required extracted-root assertion: confirmed
-- Relative project paths: confirmed
-- Quick/full mode and artifact-generation explanations: confirmed
-- t-SNE, clustering, supervised comparisons, split evaluation, ROC/PR,
-  confusion matrices, graph ablation, top-k MI, natural-prior stress, and
-  time-based leakage audit: preserved
-- Submission-grade research narrative: confirmed. Each experiment block now
-  explains its motivation, the purpose of the displayed code, the observed
-  result, the next modeling decision, and the boundary of the conclusion.
-- Macro-level AML interpretation: confirmed. The notebook connects model
-  ranking to investigation workload, temporal feature availability, human
-  review, and the distinction between retrospective analysis and deployment.
-- Failure-driven development: confirmed. Accuracy failure, weak clustering
-  label agreement, natural-prior alert pressure, and reversal of the graph
-  gain under the time audit are retained and interpreted rather than hidden.
-- Code integrity: confirmed. All 20 code-cell sources are byte-for-byte
-  identical to the previously validated notebook; only Markdown narrative and
-  notebook-level metadata were expanded before re-execution.
+- Total cells: 76
+- Markdown cells: 50
+- Code cells: 26
+- Code cells with execution counts: 26
+- Code cells with preserved outputs: 24
+- Error outputs: 0
+- `RUN_FULL_PIPELINE = False` for fast reviewer execution: confirmed
+- Full regeneration path invokes all three source scripts: confirmed
+- Extracted-root assertion and relative project paths: confirmed
 
-The full pipeline was not rerun during this repair because that would repeat
-the multi-million-row experiment and was not needed to validate the requested
-submission fixes. The saved experiment artifacts and executed quick-mode
-notebook were retained.
+The notebook now covers preprocessing, EDA, PCA/t-SNE, KMeans and DBSCAN,
+multiple clustering metrics, supervised baselines, train/test/full confusion
+matrices, ROC/PR analysis, mutual-information selection, graph ablation,
+natural-prior stress, formal CV/grid search, the frozen-snapshot failure,
+strict historical repair, and bootstrap uncertainty. Markdown before and after
+experiment cells states the question, explains the code, interprets the result,
+and limits the claim. A final code appendix displays every line of all three
+source modules so the submitted notebook contains the complete implementation.
+
+The new model-selection and temporal experiments were actually run on all
+165,177 rows in the established modeling sample. The earlier multi-million-row
+core pipeline was not repeated in this repair; its saved full-data and
+natural-prior artifacts remain unchanged.
 
 ## Report
 
-PASS. The report uses the course-provided `neurips_2025.sty` in final,
-non-preprint mode:
+PASS. The report uses the provided `neurips_2025.sty` in final mode and was
+compiled twice in both the final worktree and the freshly extracted ZIP.
 
-```tex
-\usepackage[final,main,nonatbib]{neurips_2025}
-```
+- PDF pages: 12 total.
+- Main report: pages 1-10.
+- References begin: page 11.
+- Credit and GenAI disclosure: page 12.
+- Course 5-10 page recommendation excluding references: satisfied.
+- LaTeX errors, undefined controls/references, and overfull boxes: none.
+- Preprint, anonymous, or under-review notice in the PDF: none.
 
-- Compiled twice from the report workspace: PASS
-- Compiled twice from the clean staging root: PASS
-- Compiled twice from the freshly extracted ZIP root: PASS
-- Pages: 10 total; references begin on page 10, so the main report remains
-  within the course's suggested 5--10 page range excluding references
-- LaTeX errors: none
-- Undefined controls: none
-- Undefined citations/references: none
-- Overfull boxes: none
-- Preprint/anonymous/under-review PDF text: none
-
-All ten final pages were rendered and inspected. No clipping, overlap, broken
-figures, or unreadable contribution text was found.
-
-The expanded discussion adds research motivation, a failure-driven account of
-model development, protocol interpretation boundaries, AML investigation
-support, system-level implications, and a practical next-stage design. No
-experimental value was changed or added without execution.
+All pages were rendered and inspected. The new CV figure, temporal ablation
+figure, tables, references, and disclosure are readable with no clipping or
+overlap.
 
 ## Presentation
 
-PASS. The presentation remains 10 pages and retains the requested narrative:
-rare-event problem, accuracy failure, transaction/account features,
-t-SNE/DBSCAN exploration, clustering interpretation, failure-driven path,
-PR-AUC comparison, top-k MI trade-off, natural-prior alert pressure, and the
-random-versus-time leakage audit.
+PASS. The presentation remains 10 pages. Slides 6, 7, and 10 were updated in
+the existing visual template.
 
-- Slide 5 DBSCAN wording repaired: PASS
-- Slide 10 random graph gain +0.166 PR-AUC retained: PASS
-- Slide 10 time-based graph change -0.224 PR-AUC retained: PASS
-- Bounded deployment conclusion retained: PASS
-- All ten PDF pages rendered and inspected: PASS
-- Clipping, overlap, stretched images, or missing page numbers: none found
+- Slide 6 preserves the failure-driven development path and adds the temporal
+  repair.
+- Slide 7 reports the five formal CV comparisons and fold variability.
+- Slide 10 contrasts frozen-snapshot failure with strict-history recovery and
+  reports the paired interval.
+- All ten PDF pages were rendered and visually inspected with no clipping,
+  overlap, or missing page numbers.
+
+## Clustering and Natural-prior Wording
+
+PASS. DBSCAN maximum risk 0.848 is consistently identified as the label `-1`
+noise/outlier group in the modeling account sample, not accuracy, purity, or
+deployment precision. Low NMI and near-zero ARI remain visible.
+
+PASS. The natural-prior stress test remains separate from temporal validation.
+Its 0.1034 percent positive rate, 99,113 false positives, and 665.6 alerts per
+10,000 are retained as workload evidence, not a prospective performance claim.
+
+## Contribution and GenAI Checks
+
+PASS. No percentage contribution is assigned to any member. The report and
+README state that Minghua XIONG handled data processing and Bokang GAO and Zi
+Xuan SZETO handled the remaining project components.
+
+PASS. The disclosure now explicitly includes implementation assistance for the
+model-selection and temporal-history experiments, along with planning,
+debugging, visualization/report structuring, and language polishing. The stated
+estimate remains 25 percent and the team-verification statement is retained.
+
+## Clean Environment
+
+The validated Python 3.13 environment is
+`tmp/clean_env_20260724_2248`. Installation from
+`requirements_zxszeto_group_IBM_AML.txt` previously completed successfully.
+
+PASS. All three source modules compile and import in this environment. Jupyter
+execution from `tmp/final_extract_20260726_v3` completed successfully. Windows
+printed benign ZMQ event-loop warnings; no notebook error resulted.
 
 ## ZIP
 
-The final ZIP was created with Python `zipfile` and
-`path.relative_to(root).as_posix()`.
+The final ZIP was generated with an explicit allowlist and POSIX archive paths.
 
-- Entries: 93
-- CRC test with `ZipFile.testzip()`: PASS
-- Entries containing Windows backslashes: 0
-- Required forward-slash examples: confirmed
-- Extra top-level project folder: none
-- Fresh extraction to a new temporary directory: PASS
-- Notebook quick execution after extraction: PASS
-- Report compilation after extraction: PASS
+- Entries: 103.
+- CRC test with `ZipFile.testzip()`: PASS.
+- Entries containing Windows backslashes: 0.
+- Extra top-level folder: none.
+- Fresh extraction: PASS.
+- Notebook quick execution after extraction: PASS.
+- Three-module import after extraction: PASS.
+- Report compilation twice after extraction: PASS.
 
-The local shell did not provide `unzip` or `zipinfo`; the equivalent standard
-library checks used `ZipFile.testzip()` and `ZipFile.namelist()`. The complete
-entry list was inspected programmatically.
-
-The ZIP excludes validation reports, audit files, old PDFs, nested ZIPs,
-temporary renders, `__pycache__`, bytecode, checkpoints, the clean virtual
-environment, cached files, and filenames containing `(1)` or `(2)`.
-
-## Numeric Consistency
-
-PASS. The report and presentation values were checked against
-`results/*.csv` and `results/*.json`.
-
-- HGB plus graph: F1 0.628 and PR-AUC 0.721
-- HGB graph PR-AUC gain: +0.166
-- Random Forest graph PR-AUC gain: +0.131
-- Natural-prior stress: 0.1034 percent positive rate, 99,113 false positives,
-  and 665.6 alerts per 10,000
-- Time audit: base PR-AUC 0.683 versus graph PR-AUC 0.459
-- DBSCAN maximum risk: 0.848 at label -1
-- DBSCAN ARI: -0.008
-
-The random/transductive graph gain, negative time-based graph result, and the
-distinction among the three evaluation protocols are all preserved.
+The ZIP excludes the raw Kaggle archive, Parquet feature caches, validation
+reports, LaTeX intermediates, temporary renders, `__pycache__`, bytecode,
+checkpoints, environments, old PDFs, and nested ZIPs.
 
 ## SHA-256 Identity
 
-PASS. The following standalone files are byte-identical to the same-named ZIP
-entries:
+PASS. Each standalone submission file is byte-identical to its ZIP entry.
 
-- Report PDF: `3e6c1d546376456f7871e1aafd03bc306551d5f51d19f938e9c85b27098ef8de`
-- Report TEX: `1424593857d6c1a1b556aa39d6771fe91ff0c895d83a56eb75177d2369987242`
-- Presentation PDF: `93e7d5f55b72dc108b913f61feff037aa0ce3c080de01cc203f6979e90dde177`
-- Notebook: `5798d6c8b0876ef485c2c53b8b450ef9564ca5142c122b832a8b2bd4795bb4ff`
+- Report PDF: `49f1ecb373b5829edf6e18921adc4628c8668df272b8e320245bd26715aee902`
+- Report TEX: `2efa51c2b71f66d6720c0c0a41442ac63a6e9a03c23e796bdb294e7812014c71`
+- Presentation PDF: `8516150c0653e4126c60d1b97eff8eb3bf456568f2b254450a67fbe51d7fff95`
+- Notebook: `4f87513813bf0286fc8388c2ff79e51d5814ee3f1cbdf1d1b500803e2b9d326e`
 - Requirements: `fd3a81a79984cd59e0db9276c44a7c0e3b989c8b1b42475ee301861729280b1d`
-- README: `7f4dfffa5f363373247d8175abe49cd3ecb5006d68e602b473b3a981e48a8971`
-
-## Recursive Cleanup
-
-PASS outside the course style file. No obsolete placeholder, preprint option,
-group ID, student placeholder, replacement marker, TODO, FIXME, blocked-file
-marker, or `data cleaning` contribution wording remains in submission-facing
-text or source files.
-
-The unmodified course style contains nine internal occurrences of `preprint`
-as part of its option implementation. The report does not select that option,
-and the compiled PDF contains no preprint notice.
+- README: `57ad6566fc660a784ac9f87d9946ee6831f786f4bc0318f40ca0b5ea5cba8baa`
 
 ## Residual Notes
 
-No submission blocker remains.
-
-- MiKTeX prints its local update reminder after successful compilation.
-- Jupyter on Windows prints benign ZMQ transport/event-loop warnings while the
-  notebook still exits successfully.
-- The artifact-tool process returns a nonzero Windows status after writing the
-  PPTX and all preview files. The PowerPoint-exported final PDF was therefore
-  used for full ten-page visual validation.
-
-No experimental result was fabricated, removed, or silently altered during
-this repair.
+No submission blocker remains. MiKTeX prints its local update reminder after a
+successful compilation. PowerPoint's artifact-tool process returned a nonzero
+Windows status after writing the revised PPTX and previews, so the final deck
+was additionally exported with PowerPoint and all ten resulting PDF pages were
+checked. No experimental result was fabricated or silently removed.
