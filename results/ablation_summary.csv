@@ -1,0 +1,3 @@
+comparison,base_model,enhanced_model,delta_f1,delta_pr_auc
+Random Forest: base -> graph,Random Forest Base Features,Random Forest + Graph Features,0.06239805638938001,0.13056245429584057
+HistGradientBoosting: base -> graph,HistGradientBoosting Base Features,HistGradientBoosting + Graph Features,0.0880342996970358,0.16561445646103445

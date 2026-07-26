@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 import urllib.request
 import zipfile
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
@@ -36,6 +39,8 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.dummy import DummyClassifier
+from sklearn.svm import LinearSVC
 from sklearn.tree import DecisionTreeClassifier
 
 
@@ -428,49 +433,124 @@ def evaluate_clusters(method: str, x: np.ndarray, labels: np.ndarray, viz: pd.Da
     return row
 
 
-def evaluate_classifier(name: str, model: Pipeline, x_train: pd.DataFrame, x_test: pd.DataFrame, y_train: pd.Series, y_test: pd.Series) -> dict:
-    model.fit(x_train, y_train)
+def score_classifier(
+    model: Pipeline,
+    x_eval: pd.DataFrame,
+    y_eval: pd.Series,
+    threshold: float,
+) -> dict:
     if hasattr(model, "predict_proba"):
-        y_score = model.predict_proba(x_test)[:, 1]
+        y_score = model.predict_proba(x_eval)[:, 1]
     else:
-        y_score = model.decision_function(x_test)
-    y_pred_default = (y_score >= 0.5).astype(int)
+        y_score = model.decision_function(x_eval)
+    y_pred = (y_score >= threshold).astype(int)
+    return {
+        "accuracy": float((y_pred == y_eval).mean()),
+        "precision": float(precision_score(y_eval, y_pred, zero_division=0)),
+        "recall": float(recall_score(y_eval, y_pred, zero_division=0)),
+        "f1": float(f1_score(y_eval, y_pred, zero_division=0)),
+        "roc_auc": float(roc_auc_score(y_eval, y_score)),
+        "pr_auc": float(average_precision_score(y_eval, y_score)),
+        "y_score": y_score,
+        "y_pred": y_pred,
+    }
 
-    precision, recall, thresholds = precision_recall_curve(y_test, y_score)
+def tune_threshold(y_val: pd.Series, y_score: np.ndarray) -> tuple[float, float]:
+    precision, recall, thresholds = precision_recall_curve(y_val, y_score)
     f1_values = 2 * precision * recall / np.maximum(precision + recall, 1e-12)
-    best_idx = int(np.nanargmax(f1_values))
-    best_threshold = thresholds[max(best_idx - 1, 0)] if len(thresholds) else 0.5
-    y_pred_tuned = (y_score >= best_threshold).astype(int)
+    if not len(thresholds):
+        return 0.5, float(np.nanmax(f1_values))
+    best_idx = int(np.nanargmax(f1_values[:-1]))
+    return float(thresholds[best_idx]), float(f1_values[best_idx])
 
-    report = classification_report(y_test, y_pred_tuned, output_dict=True, zero_division=0)
+def evaluate_classifier(
+    name: str,
+    model: Pipeline,
+    x_fit: pd.DataFrame,
+    x_val: pd.DataFrame,
+    x_train_full: pd.DataFrame,
+    x_test: pd.DataFrame,
+    x_all: pd.DataFrame,
+    y_fit: pd.Series,
+    y_val: pd.Series,
+    y_train_full: pd.Series,
+    y_test: pd.Series,
+    y_all: pd.Series,
+) -> tuple[dict, list[dict]]:
+    model.fit(x_fit, y_fit)
+    if hasattr(model, "predict_proba"):
+        val_score = model.predict_proba(x_val)[:, 1]
+    else:
+        val_score = model.decision_function(x_val)
+    if name == "Dummy All-Legitimate":
+        best_threshold, validation_f1 = 0.5, 0.0
+    else:
+        best_threshold, validation_f1 = tune_threshold(y_val, val_score)
+
+    split_inputs = {
+        "train": (x_train_full, y_train_full),
+        "test": (x_test, y_test),
+        "full": (x_all, y_all),
+    }
+    detailed_rows = []
+    scored = {}
+    for split, (x_eval, y_eval) in split_inputs.items():
+        result = score_classifier(model, x_eval, y_eval, best_threshold)
+        cm_split = confusion_matrix(y_eval, result["y_pred"])
+        scored[split] = result
+        detailed_rows.append(
+            {
+                "model": name,
+                "split": split,
+                "threshold": best_threshold,
+                "validation_f1": validation_f1,
+                "accuracy": result["accuracy"],
+                "precision": result["precision"],
+                "recall": result["recall"],
+                "f1": result["f1"],
+                "roc_auc": result["roc_auc"],
+                "pr_auc": result["pr_auc"],
+                "tn": int(cm_split[0, 0]),
+                "fp": int(cm_split[0, 1]),
+                "fn": int(cm_split[1, 0]),
+                "tp": int(cm_split[1, 1]),
+            }
+        )
+        disp_split = ConfusionMatrixDisplay(confusion_matrix=cm_split, display_labels=["Legitimate", "Laundering"])
+        disp_split.plot(cmap="Blues", values_format="d")
+        plt.title(f"Confusion Matrix: {name} ({split})")
+        plt.tight_layout()
+        safe_name_split = name.lower().replace(" ", "_").replace("+", "plus")
+        plt.savefig(str(FIGURES / f"confusion_matrix_{safe_name_split}_{split}.png"), dpi=220)
+        plt.close()
+
+    test_result = scored["test"]
+    report = classification_report(y_test, test_result["y_pred"], output_dict=True, zero_division=0)
     row = {
         "model": name,
         "threshold": float(best_threshold),
-        "accuracy": float((y_pred_tuned == y_test).mean()),
-        "precision": float(precision_score(y_test, y_pred_tuned, zero_division=0)),
-        "recall": float(recall_score(y_test, y_pred_tuned, zero_division=0)),
-        "f1": float(f1_score(y_test, y_pred_tuned, zero_division=0)),
-        "roc_auc": float(roc_auc_score(y_test, y_score)),
-        "pr_auc": float(average_precision_score(y_test, y_score)),
+        "validation_f1": float(validation_f1),
+        "accuracy": test_result["accuracy"],
+        "precision": test_result["precision"],
+        "recall": test_result["recall"],
+        "f1": test_result["f1"],
+        "roc_auc": test_result["roc_auc"],
+        "pr_auc": test_result["pr_auc"],
         "positive_precision": float(report["1"]["precision"]),
         "positive_recall": float(report["1"]["recall"]),
         "positive_f1": float(report["1"]["f1-score"]),
     }
 
-    cm = confusion_matrix(y_test, y_pred_tuned)
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Legitimate", "Laundering"])
-    disp.plot(cmap="Blues", values_format="d")
-    plt.title(f"Confusion Matrix: {name}")
-    plt.tight_layout()
     safe_name = name.lower().replace(" ", "_").replace("+", "plus")
-    plt.savefig(FIGURES / f"confusion_matrix_{safe_name}.png", dpi=220)
-    plt.close()
+    test_cm_path = FIGURES / f"confusion_matrix_{safe_name}_test.png"
+    if test_cm_path.exists():
+        shutil.copyfile(test_cm_path, FIGURES / f"confusion_matrix_{safe_name}.png")
 
-    fpr, tpr, _ = roc_curve(y_test, y_score)
-    pr_precision, pr_recall, _ = precision_recall_curve(y_test, y_score)
+    fpr, tpr, _ = roc_curve(y_test, test_result["y_score"])
+    pr_precision, pr_recall, _ = precision_recall_curve(y_test, test_result["y_score"])
     pd.DataFrame({"fpr": fpr, "tpr": tpr}).to_csv(RESULTS / f"roc_{safe_name}.csv", index=False)
     pd.DataFrame({"precision": pr_precision, "recall": pr_recall}).to_csv(RESULTS / f"pr_{safe_name}.csv", index=False)
-    return row
+    return row, detailed_rows
 
 
 def run_supervised_models(df: pd.DataFrame) -> None:
@@ -479,11 +559,23 @@ def run_supervised_models(df: pd.DataFrame) -> None:
     x_train, x_test, y_train, y_test = train_test_split(
         x, y, test_size=0.30, random_state=RANDOM_STATE, stratify=y
     )
+    x_fit, x_val, y_fit, y_val = train_test_split(
+        x_train, y_train, test_size=0.20, random_state=RANDOM_STATE, stratify=y_train
+    )
 
     base_pre = make_preprocessor(BASE_NUMERIC)
     graph_pre = make_preprocessor(BASE_NUMERIC + GRAPH_NUMERIC)
 
     models = [
+        (
+            "Dummy All-Legitimate",
+            Pipeline(
+                [
+                    ("preprocess", base_pre),
+                    ("model", DummyClassifier(strategy="most_frequent")),
+                ]
+            ),
+        ),
         (
             "Logistic Regression",
             Pipeline(
@@ -507,6 +599,23 @@ def run_supervised_models(df: pd.DataFrame) -> None:
                 [
                     ("preprocess", base_pre),
                     ("model", DecisionTreeClassifier(max_depth=9, class_weight="balanced", random_state=RANDOM_STATE)),
+                ]
+            ),
+        ),
+        (
+            "Linear SVM",
+            Pipeline(
+                [
+                    ("preprocess", make_preprocessor(BASE_NUMERIC)),
+                    (
+                        "model",
+                        LinearSVC(
+                            class_weight="balanced",
+                            C=0.5,
+                            max_iter=3000,
+                            random_state=RANDOM_STATE,
+                        ),
+                    ),
                 ]
             ),
         ),
@@ -587,13 +696,81 @@ def run_supervised_models(df: pd.DataFrame) -> None:
     ]
 
     rows = []
+    detailed_rows = []
     fitted = {}
     for name, model in models:
         print(f"Training {name}...")
-        rows.append(evaluate_classifier(name, model, x_train, x_test, y_train, y_test))
+        row, details = evaluate_classifier(
+            name,
+            model,
+            x_fit,
+            x_val,
+            x_train,
+            x_test,
+            x,
+            y_fit,
+            y_val,
+            y_train,
+            y_test,
+            y,
+        )
+        rows.append(row)
+        detailed_rows.extend(details)
         fitted[name] = model
     metrics = pd.DataFrame(rows).sort_values(["positive_f1", "pr_auc"], ascending=False)
     metrics.to_csv(RESULTS / "metrics_summary.csv", index=False)
+    pd.DataFrame(detailed_rows).to_csv(RESULTS / "metrics_by_split.csv", index=False)
+
+    failures = pd.DataFrame(
+        [
+            {
+                "stage": "Naive baseline",
+                "attempt": "Predict every transaction as legitimate",
+                "failure_mode": "Looks excellent by accuracy because laundering is below 0.2% in the full data, but recall and F1 for laundering are zero.",
+                "lesson": "Accuracy cannot be the main AML metric; use recall, F1, ROC-AUC, and PR-AUC.",
+            },
+            {
+                "stage": "Linear baseline",
+                "attempt": "Class-weighted logistic regression on tabular features",
+                "failure_mode": "Improves recall but has low precision and low PR-AUC because the relation between transaction features and laundering is nonlinear.",
+                "lesson": "Use it as an interpretable baseline, not as the final detector.",
+            },
+            {
+                "stage": "Single tree",
+                "attempt": "Class-weighted decision tree",
+                "failure_mode": "High recall comes with many false positives; the model is sensitive to thresholds and tree depth.",
+                "lesson": "A single tree is useful for diagnosis, but ensemble models are more stable.",
+            },
+            {
+                "stage": "Feature ablation",
+                "attempt": "Compare base features with base + graph-aware account behavior",
+                "failure_mode": "Base features miss network context: the same amount/payment format can be normal or suspicious depending on account behavior.",
+                "lesson": "Graph-aware features capture repeated counterparties, hubs, and flow patterns that improve minority-class detection.",
+            },
+        ]
+    )
+    failures.to_csv(RESULTS / "failure_modes.csv", index=False)
+
+    def lookup(model_name: str, metric: str) -> float:
+        return float(metrics.loc[metrics["model"] == model_name, metric].iloc[0])
+
+    ablation_rows = [
+        {
+            "comparison": "Random Forest: base -> graph",
+            "base_model": "Random Forest Base Features",
+            "enhanced_model": "Random Forest + Graph Features",
+            "delta_f1": lookup("Random Forest + Graph Features", "f1") - lookup("Random Forest Base Features", "f1"),
+            "delta_pr_auc": lookup("Random Forest + Graph Features", "pr_auc") - lookup("Random Forest Base Features", "pr_auc"),
+        },
+        {
+            "comparison": "HistGradientBoosting: base -> graph",
+            "base_model": "HistGradientBoosting Base Features",
+            "enhanced_model": "HistGradientBoosting + Graph Features",
+            "delta_f1": lookup("HistGradientBoosting + Graph Features", "f1") - lookup("HistGradientBoosting Base Features", "f1"),
+            "delta_pr_auc": lookup("HistGradientBoosting + Graph Features", "pr_auc") - lookup("HistGradientBoosting Base Features", "pr_auc"),
+        },
+    ]
+    pd.DataFrame(ablation_rows).to_csv(RESULTS / "ablation_summary.csv", index=False)
 
     plt.figure(figsize=(8, 6))
     for _, row in metrics.iterrows():

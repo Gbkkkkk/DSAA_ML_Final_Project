@@ -1,0 +1,2 @@
+model,evaluation,rows,positive_rows,positive_rate,threshold_from_validation,accuracy,precision,recall,f1,roc_auc,pr_auc,tn,fp,fn,tp
+HistGradientBoosting + Graph Features,natural_class_prior_stress_test,1501553,1553,0.0010342625268638535,0.9084676069107382,0.9335141683310546,0.008344422543948293,0.5370251126851255,0.016433497536945813,0.9071102285898263,0.009406205980034454,1400887,99113,719,834

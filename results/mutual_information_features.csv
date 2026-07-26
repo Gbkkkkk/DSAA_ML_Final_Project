@@ -1,0 +1,61 @@
+feature,mutual_information
+cat__Payment Format_ACH,0.044459063422843226
+num__sender_mean_sent,0.032869450876227724
+num__receiver_mean_received,0.029534917781283587
+num__sender_total_sent,0.028263193549290522
+num__receiver_pagerank,0.02795840989641518
+num__receiver_total_received,0.027458033457988806
+num__receiver_in_degree,0.026103980430413287
+num__receiver_unique_senders,0.024202828060133408
+num__sample_receiver_in_degree,0.02263689699824889
+num__sender_out_degree,0.02129926542085947
+num__sender_unique_receivers,0.018876889328036217
+num__sender_pagerank,0.013145823053908545
+num__Amount Received,0.012568853447072259
+num__Amount Paid,0.012422318192206738
+num__log_amount_received,0.01241810782544328
+num__log_amount_paid,0.012323657028910695
+num__sample_sender_out_degree,0.01146257369318282
+cat__Payment Format_Cheque,0.0105907887632255
+num__same_bank,0.007707736850781632
+num__is_weekend,0.007206511564578744
+cat__Payment Format_Credit Card,0.006975016634453768
+cat__Payment Currency_US Dollar,0.006042261509069613
+num__weekday,0.005674697672549023
+cat__Receiving Currency_US Dollar,0.004850201779738494
+num__hour,0.004674693047548972
+num__sent_received_ratio,0.004598072079339488
+cat__Payment Format_Reinvestment,0.002853553614166726
+cat__Payment Currency_Saudi Riyal,0.002655193861553995
+cat__Payment Currency_Euro,0.002523340583599598
+cat__Payment Format_Cash,0.002394885731556551
+cat__Receiving Currency_Euro,0.0021475502875383246
+cat__Receiving Currency_Saudi Riyal,0.002046674538751736
+cat__Receiving Currency_UK Pound,0.0013760004015272997
+cat__Payment Currency_Canadian Dollar,0.0011641776428701345
+cat__Payment Currency_Rupee,0.001042218616930768
+cat__Payment Format_Wire,0.001009655676461163
+cat__Receiving Currency_Shekel,0.0008634319377771593
+num__same_currency,0.0007877239287099602
+cat__Receiving Currency_Canadian Dollar,0.0007685845384568513
+cat__Receiving Currency_Rupee,0.0007374278643939025
+cat__Receiving Currency_Ruble,0.0006468825149144042
+cat__Payment Currency_Ruble,0.0005889619322194672
+cat__Payment Currency_Bitcoin,0.0004762842865051464
+num__amount_diff,0.0003023445268988123
+cat__Payment Currency_Shekel,0.00027630217234442256
+cat__Payment Format_Bitcoin,0.00022456466968612254
+cat__Payment Currency_Mexican Peso,0.00021956514870113963
+cat__Payment Currency_UK Pound,0.00012259846565743082
+cat__Receiving Currency_Mexican Peso,4.576271230538609e-05
+cat__Payment Currency_Australian Dollar,0.0
+cat__Payment Currency_Brazil Real,0.0
+cat__Payment Currency_Swiss Franc,0.0
+cat__Receiving Currency_Brazil Real,0.0
+cat__Payment Currency_Yuan,0.0
+cat__Receiving Currency_Australian Dollar,0.0
+cat__Receiving Currency_Bitcoin,0.0
+cat__Payment Currency_Yen,0.0
+cat__Receiving Currency_Swiss Franc,0.0
+cat__Receiving Currency_Yen,0.0
+cat__Receiving Currency_Yuan,0.0

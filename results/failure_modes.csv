@@ -1,0 +1,5 @@
+stage,attempt,failure_mode,lesson
+Naive baseline,Predict every transaction as legitimate,"Looks excellent by accuracy because laundering is below 0.2% in the full data, but recall and F1 for laundering are zero.","Accuracy cannot be the main AML metric; use recall, F1, ROC-AUC, and PR-AUC."
+Linear baseline,Class-weighted logistic regression on tabular features,Improves recall but has low precision and low PR-AUC because the relation between transaction features and laundering is nonlinear.,"Use it as an interpretable baseline, not as the final detector."
+Single tree,Class-weighted decision tree,High recall comes with many false positives; the model is sensitive to thresholds and tree depth.,"A single tree is useful for diagnosis, but ensemble models are more stable."
+Feature ablation,Compare base features with base + graph-aware account behavior,Base features miss network context: the same amount/payment format can be normal or suspicious depending on account behavior.,"Graph-aware features capture repeated counterparties, hubs, and flow patterns that improve minority-class detection."
