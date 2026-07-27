@@ -31,7 +31,21 @@ The dataset is IBM Transactions for Anti Money Laundering, available from Kaggle
 
 https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml
 
-The scripts can use a programmatic mirror only as a fallback. The raw Kaggle data file is not bundled in this submission archive to keep the package portable.
+The final reproducible experiments require only `HI-Small_Trans.csv.zip`, which
+contains the transaction table `HI-Small_Trans.csv`. The transaction table
+already includes the fields used by this project: timestamp, sender/receiver
+bank and account identifiers, amounts, currencies, payment format, and the
+`Is Laundering` label.
+
+The original Kaggle dataset may also include supplementary account and pattern
+files. Those files are useful for additional typology exploration, but they are
+not required to reproduce the submitted notebook, report figures, clustering
+analysis, or supervised model results. Our graph-aware features are derived
+directly from the sender and receiver account fields in `HI-Small_Trans.csv`.
+
+The scripts can use a programmatic mirror only as a fallback for
+`HI-Small_Trans.csv.zip`. The raw Kaggle data file is not bundled in this
+submission archive to keep the package portable.
 
 ## Quick Notebook Execution
 
