@@ -1,16 +1,4 @@
-"""Formal model selection and leakage-safe temporal graph experiments.
-
-This module extends the original course pipeline in two ways:
-
-1. It performs training-set-only GridSearchCV with PR-AUC as the refit metric.
-2. It constructs graph/history features in chronological order, so every row
-   uses only transactions that occurred earlier in time.
-
-The legacy random/transductive and frozen-history results remain in the
-submission as failure modes. New results are written to separate artifacts.
-"""
-
-from __future__ import annotations
+"""Grid search and chronological graph-feature experiments."""
 
 import json
 import time
@@ -96,7 +84,7 @@ HISTORY_NUMERIC = [
 ]
 
 
-def _best_f1_threshold(y_true: pd.Series, scores: np.ndarray) -> tuple[float, float]:
+def best_f1_threshold(y_true, scores):
     """Select an operating threshold without using held-out test labels."""
     precision, recall, thresholds = precision_recall_curve(y_true, scores)
     if not len(thresholds):
@@ -106,7 +94,7 @@ def _best_f1_threshold(y_true: pd.Series, scores: np.ndarray) -> tuple[float, fl
     return float(thresholds[idx]), float(f1[idx])
 
 
-def _classification_metrics(y_true: pd.Series, scores: np.ndarray, threshold: float) -> dict:
+def classification_metrics(y_true, scores, threshold):
     """Return rare-event metrics and confusion counts for one operating point."""
     pred = (scores >= threshold).astype(int)
     tn, fp, fn, tp = confusion_matrix(y_true, pred).ravel()
@@ -124,7 +112,7 @@ def _classification_metrics(y_true: pd.Series, scores: np.ndarray, threshold: fl
     }
 
 
-def _model_pipeline(model, numeric_features: list[str]) -> Pipeline:
+def model_pipeline(model, numeric_features):
     """Keep imputation, scaling, and one-hot encoding inside every CV fold."""
     return Pipeline(
         [
@@ -134,7 +122,7 @@ def _model_pipeline(model, numeric_features: list[str]) -> Pipeline:
     )
 
 
-def run_formal_grid_search(df: pd.DataFrame) -> None:
+def run_formal_grid_search(df):
     """Tune four model families with 3-fold stratified CV on training data only."""
     y = df["Is Laundering"].astype(int)
     x = df.drop(columns=["Is Laundering"])
@@ -151,7 +139,7 @@ def run_formal_grid_search(df: pd.DataFrame) -> None:
         (
             "Logistic Regression",
             "base",
-            _model_pipeline(
+            model_pipeline(
                 LogisticRegression(
                     max_iter=1200,
                     class_weight="balanced",
@@ -164,7 +152,7 @@ def run_formal_grid_search(df: pd.DataFrame) -> None:
         (
             "Decision Tree",
             "base",
-            _model_pipeline(
+            model_pipeline(
                 DecisionTreeClassifier(class_weight="balanced", random_state=RANDOM_STATE),
                 BASE_NUMERIC,
             ),
@@ -176,7 +164,7 @@ def run_formal_grid_search(df: pd.DataFrame) -> None:
         (
             "Random Forest",
             "base",
-            _model_pipeline(
+            model_pipeline(
                 RandomForestClassifier(
                     n_estimators=140,
                     class_weight="balanced_subsample",
@@ -193,7 +181,7 @@ def run_formal_grid_search(df: pd.DataFrame) -> None:
         (
             "HistGradientBoosting",
             "base",
-            _model_pipeline(
+            model_pipeline(
                 HistGradientBoostingClassifier(
                     max_iter=160,
                     class_weight="balanced",
@@ -210,7 +198,7 @@ def run_formal_grid_search(df: pd.DataFrame) -> None:
         (
             "HistGradientBoosting",
             "base+retrospective_graph",
-            _model_pipeline(
+            model_pipeline(
                 HistGradientBoostingClassifier(
                     max_iter=160,
                     class_weight="balanced",
@@ -252,9 +240,9 @@ def run_formal_grid_search(df: pd.DataFrame) -> None:
             method="predict_proba",
             n_jobs=2,
         )[:, 1]
-        threshold, oof_f1 = _best_f1_threshold(y_train, oof_scores)
+        threshold, oof_f1 = best_f1_threshold(y_train, oof_scores)
         test_scores = search.best_estimator_.predict_proba(x_test)[:, 1]
-        metrics = _classification_metrics(y_test, test_scores, threshold)
+        metrics = classification_metrics(y_test, test_scores, threshold)
 
         summary.append(
             {
@@ -315,7 +303,7 @@ def run_formal_grid_search(df: pd.DataFrame) -> None:
     plt.close()
 
 
-def add_expanding_history_features(raw: pd.DataFrame) -> pd.DataFrame:
+def add_expanding_history_features(raw):
     """Create account and edge features from strictly earlier transactions.
 
     Rows must be in chronological order. Feature values are recorded before the
@@ -440,9 +428,9 @@ def add_expanding_history_features(raw: pd.DataFrame) -> pd.DataFrame:
     return base
 
 
-def _temporal_hgb(params: dict, features: list[str]) -> Pipeline:
+def temporal_hgb(params, features):
     """Build one temporal HGB candidate with preprocessing inside the pipeline."""
-    return _model_pipeline(
+    return model_pipeline(
         HistGradientBoostingClassifier(
             max_iter=params["max_iter"],
             learning_rate=params["learning_rate"],
@@ -455,7 +443,7 @@ def _temporal_hgb(params: dict, features: list[str]) -> Pipeline:
     )
 
 
-def run_strict_temporal_ablation(df: pd.DataFrame) -> None:
+def run_strict_temporal_ablation(df):
     """Tune base and strict-history HGB on a chronological validation period."""
     raw = df[RAW_COLUMNS].copy()
     strict = add_expanding_history_features(raw)
@@ -499,7 +487,7 @@ def run_strict_temporal_ablation(df: pd.DataFrame) -> None:
         best = None
         for params in candidates:
             started = time.perf_counter()
-            model = _temporal_hgb(params, features)
+            model = temporal_hgb(params, features)
             model.fit(x_train, y_train)
             val_scores = model.predict_proba(x_val)[:, 1]
             val_pr_auc = float(average_precision_score(y_val, val_scores))
@@ -515,10 +503,10 @@ def run_strict_temporal_ablation(df: pd.DataFrame) -> None:
             if best is None or val_pr_auc > best["validation_pr_auc"]:
                 best = {**candidate, "model": model, "validation_scores": val_scores}
 
-        threshold, validation_f1 = _best_f1_threshold(y_val, best["validation_scores"])
+        threshold, validation_f1 = best_f1_threshold(y_val, best["validation_scores"])
         test_scores = best["model"].predict_proba(x_test)[:, 1]
         selected_test_scores[feature_label] = test_scores
-        metrics = _classification_metrics(y_test, test_scores, threshold)
+        metrics = classification_metrics(y_test, test_scores, threshold)
         rows.append(
             {
                 "protocol": "time_based_60_20_20_strict_expanding_history",
@@ -614,7 +602,7 @@ def run_strict_temporal_ablation(df: pd.DataFrame) -> None:
     plt.close()
 
 
-def update_failure_log() -> None:
+def update_failure_log():
     """Add the temporal failure and its evidence-based repair to the audit log."""
     path = RESULTS / "failure_modes.csv"
     existing = pd.read_csv(path) if path.exists() else pd.DataFrame()
@@ -651,7 +639,7 @@ def update_failure_log() -> None:
     pd.concat([existing, temporal_rows], ignore_index=True).to_csv(path, index=False)
 
 
-def main() -> None:
+def main():
     RESULTS.mkdir(exist_ok=True)
     FIGURES.mkdir(exist_ok=True)
     df = pd.read_parquet(RESULTS / "model_sample_features.parquet")

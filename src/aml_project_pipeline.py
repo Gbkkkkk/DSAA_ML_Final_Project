@@ -1,11 +1,3 @@
-"""Core DSAA2011 AML pipeline.
-
-The script processes the complete transaction file in chunks for descriptive
-statistics, creates the reproducible modeling sample, engineers transaction and
-retrospective account features, and runs the mandatory visualization,
-clustering, supervised-learning, and evaluation tasks.
-"""
-
 from __future__ import annotations
 
 import json
@@ -53,7 +45,9 @@ from sklearn.tree import DecisionTreeClassifier
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_ZIP = ROOT / "data" / "HI-Small_Trans.csv.zip"
+DATA_DIR = ROOT / "data"
+DATA_CSV = DATA_DIR / "HI-Small_Trans.csv"
+DATA_ZIP = DATA_DIR / "HI-Small_Trans.csv.zip"
 DATA_URL = (
     "https://huggingface.co/datasets/eexzzm/"
     "IBM-Transactions-for-Anti-Money-Laundering-HI-Small-Trans/resolve/main/"
@@ -64,30 +58,59 @@ RESULTS = ROOT / "results"
 RANDOM_STATE = 42
 
 
-# ---------- Data access and full-dataset descriptive statistics ----------
-
-
 def ensure_dirs() -> None:
     for path in [ROOT / "data", FIGURES, RESULTS]:
         path.mkdir(parents=True, exist_ok=True)
 
 
-def ensure_data() -> None:
-    if DATA_ZIP.exists():
+def find_transaction_file():
+    """Find HI-Small_Trans.csv as a plain file or inside a local ZIP."""
+    if DATA_CSV.exists():
+        return DATA_CSV, None
+
+    zip_candidates = [DATA_ZIP]
+    zip_candidates.extend(path for path in DATA_DIR.glob("*.zip") if path != DATA_ZIP)
+    for zip_path in zip_candidates:
+        if not zip_path.exists():
+            continue
+        with zipfile.ZipFile(zip_path) as zf:
+            matches = [
+                name for name in zf.namelist()
+                if Path(name).name.lower() == "hi-small_trans.csv"
+            ]
+        if matches:
+            return zip_path, matches[0]
+    return None, None
+
+
+def ensure_data():
+    source, _ = find_transaction_file()
+    if source is not None:
         return
     print(f"Downloading dataset to {DATA_ZIP}...")
     urllib.request.urlretrieve(DATA_URL, DATA_ZIP)
 
 
-def csv_name_in_zip() -> str:
-    with zipfile.ZipFile(DATA_ZIP) as zf:
-        names = [name for name in zf.namelist() if name.lower().endswith(".csv")]
-    if not names:
-        raise FileNotFoundError(f"No CSV file found in {DATA_ZIP}")
-    return names[0]
+def csv_name_in_zip():
+    source, member = find_transaction_file()
+    if source is None or member is None:
+        raise FileNotFoundError("HI-Small_Trans.csv was not found inside a data ZIP")
+    return member
 
 
-def first_pass_stats(chunksize: int = 500_000) -> dict:
+def transaction_chunks(chunksize=500_000, usecols=None):
+    """Read the selected transaction table without loading all five million rows."""
+    ensure_data()
+    source, member = find_transaction_file()
+    if member is None:
+        yield from pd.read_csv(source, chunksize=chunksize, usecols=usecols)
+        return
+
+    with zipfile.ZipFile(source) as zf:
+        yield from pd.read_csv(zf.open(member), chunksize=chunksize, usecols=usecols)
+
+
+def first_pass_stats(chunksize=500_000):
     total_rows = 0
     positive_rows = 0
     payment_counts = {}
@@ -98,30 +121,30 @@ def first_pass_stats(chunksize: int = 500_000) -> dict:
     hourly_pos = {}
     amount_by_label = {0: [], 1: []}
 
-    name = csv_name_in_zip()
-    with zipfile.ZipFile(DATA_ZIP) as zf:
-        for chunk in pd.read_csv(zf.open(name), chunksize=chunksize):
-            chunk["Timestamp"] = pd.to_datetime(chunk["Timestamp"], errors="coerce")
-            chunk["hour"] = chunk["Timestamp"].dt.hour
-            total_rows += len(chunk)
-            positive_rows += int(chunk["Is Laundering"].sum())
+    for chunk in transaction_chunks(chunksize=chunksize):
+        chunk["Timestamp"] = pd.to_datetime(chunk["Timestamp"], errors="coerce")
+        chunk["hour"] = chunk["Timestamp"].dt.hour
+        total_rows += len(chunk)
+        positive_rows += int(chunk["Is Laundering"].sum())
 
-            for col, count_map, pos_map in [
-                ("Payment Format", payment_counts, payment_pos),
-                ("Payment Currency", currency_counts, currency_pos),
-                ("hour", hourly_counts, hourly_pos),
-            ]:
-                counts = chunk.groupby(col, dropna=False).size()
-                poss = chunk.groupby(col, dropna=False)["Is Laundering"].sum()
-                for key, value in counts.items():
-                    count_map[str(key)] = count_map.get(str(key), 0) + int(value)
-                for key, value in poss.items():
-                    pos_map[str(key)] = pos_map.get(str(key), 0) + int(value)
+        for col, count_map, pos_map in [
+            ("Payment Format", payment_counts, payment_pos),
+            ("Payment Currency", currency_counts, currency_pos),
+            ("hour", hourly_counts, hourly_pos),
+        ]:
+            counts = chunk.groupby(col, dropna=False).size()
+            positives = chunk.groupby(col, dropna=False)["Is Laundering"].sum()
+            for key, value in counts.items():
+                count_map[str(key)] = count_map.get(str(key), 0) + int(value)
+            for key, value in positives.items():
+                pos_map[str(key)] = pos_map.get(str(key), 0) + int(value)
 
-            for label in [0, 1]:
-                vals = chunk.loc[chunk["Is Laundering"] == label, "Amount Paid"].dropna()
-                if len(vals):
-                    amount_by_label[label].append(vals.sample(min(len(vals), 3000), random_state=RANDOM_STATE))
+        for label in [0, 1]:
+            values = chunk.loc[chunk["Is Laundering"] == label, "Amount Paid"].dropna()
+            if len(values):
+                amount_by_label[label].append(
+                    values.sample(min(len(values), 3000), random_state=RANDOM_STATE)
+                )
 
     stats = {
         "total_rows": total_rows,
@@ -212,18 +235,15 @@ def plot_eda(stats: dict) -> None:
     plt.close()
 
 
-def load_model_sample(stats: dict, target_negatives: int = 160_000, chunksize: int = 500_000) -> pd.DataFrame:
-    """Keep all positives and reproducibly sample negatives for model development."""
+def load_model_sample(stats, target_negatives=160_000, chunksize=500_000):
     total_negatives = stats["total_rows"] - stats["positive_rows"]
     neg_frac = min(1.0, target_negatives / total_negatives)
     frames = []
-    name = csv_name_in_zip()
-    with zipfile.ZipFile(DATA_ZIP) as zf:
-        for chunk_index, chunk in enumerate(pd.read_csv(zf.open(name), chunksize=chunksize)):
-            positives = chunk[chunk["Is Laundering"] == 1]
-            negatives = chunk[chunk["Is Laundering"] == 0]
-            neg_sample = negatives.sample(frac=neg_frac, random_state=RANDOM_STATE + chunk_index)
-            frames.append(pd.concat([positives, neg_sample], ignore_index=True))
+    for chunk_index, chunk in enumerate(transaction_chunks(chunksize=chunksize)):
+        positives = chunk[chunk["Is Laundering"] == 1]
+        negatives = chunk[chunk["Is Laundering"] == 0]
+        neg_sample = negatives.sample(frac=neg_frac, random_state=RANDOM_STATE + chunk_index)
+        frames.append(pd.concat([positives, neg_sample], ignore_index=True))
     sample = pd.concat(frames, ignore_index=True)
     sample = sample.sample(frac=1.0, random_state=RANDOM_STATE).reset_index(drop=True)
     sample.to_csv(RESULTS / "model_sample_preview.csv", index=False)
@@ -231,7 +251,6 @@ def load_model_sample(stats: dict, target_negatives: int = 160_000, chunksize: i
 
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Create row-level time, amount, and relationship features."""
     df = df.copy()
     df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce")
     df["hour"] = df["Timestamp"].dt.hour.fillna(-1).astype(int)
@@ -248,7 +267,6 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_graph_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Create retrospective account aggregates for random-split experiments."""
     df = df.copy()
     sent = df.groupby("from_account_id").agg(
         sender_out_degree=("to_account_id", "size"),
@@ -318,9 +336,6 @@ CATEGORICAL = [
     "Receiving Currency",
     "Payment Format",
 ]
-
-
-# ---------- Shared preprocessing and mandatory unsupervised analysis ----------
 
 
 def make_preprocessor(numeric_features: list[str]) -> ColumnTransformer:
@@ -456,7 +471,6 @@ def score_classifier(
     y_eval: pd.Series,
     threshold: float,
 ) -> dict:
-    """Evaluate ranking and thresholded classification for one split."""
     if hasattr(model, "predict_proba"):
         y_score = model.predict_proba(x_eval)[:, 1]
     else:
@@ -474,7 +488,6 @@ def score_classifier(
     }
 
 def tune_threshold(y_val: pd.Series, y_score: np.ndarray) -> tuple[float, float]:
-    """Select the F1 operating threshold on validation predictions only."""
     precision, recall, thresholds = precision_recall_curve(y_val, y_score)
     f1_values = 2 * precision * recall / np.maximum(precision + recall, 1e-12)
     if not len(thresholds):
@@ -573,7 +586,6 @@ def evaluate_classifier(
 
 
 def run_supervised_models(df: pd.DataFrame) -> None:
-    """Fit mandatory baselines and nonlinear base/graph model ablations."""
     y = df["Is Laundering"].astype(int)
     x = df.drop(columns=["Is Laundering"])
     x_train, x_test, y_train, y_test = train_test_split(

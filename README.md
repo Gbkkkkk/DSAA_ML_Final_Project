@@ -31,21 +31,30 @@ The dataset is IBM Transactions for Anti Money Laundering, available from Kaggle
 
 https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml
 
-The final reproducible experiments require only `HI-Small_Trans.csv.zip`, which
-contains the transaction table `HI-Small_Trans.csv`. The transaction table
-already includes the fields used by this project: timestamp, sender/receiver
-bank and account identifiers, amounts, currencies, payment format, and the
-`Is Laundering` label.
+Kaggle organizes the release into six independent variants: HI/LI, each with
+Small/Medium/Large versions. Each variant has two files. For the selected
+HI-Small variant they are:
 
-The original Kaggle dataset may also include supplementary account and pattern
-files. Those files are useful for additional typology exploration, but they are
-not required to reproduce the submitted notebook, report figures, clustering
-analysis, or supervised model results. Our graph-aware features are derived
-directly from the sender and receiver account fields in `HI-Small_Trans.csv`.
+- `HI-Small_Trans.csv`: transaction records and the `Is Laundering` target.
+- `HI-Small_Patterns.txt`: transaction IDs grouped by known laundering patterns.
 
-The scripts can use a programmatic mirror only as a fallback for
-`HI-Small_Trans.csv.zip`. The raw Kaggle data file is not bundled in this
-submission archive to keep the package portable.
+Our experiments use the transaction CSV because it contains all columns needed
+for preprocessing, t-SNE, clustering, prediction, and graph aggregation. The
+account-level table is derived from `Account` and `Account.1`; the official
+Kaggle file list does not include a separate account file. The Patterns file is
+useful for typology analysis but is not required for the tasks implemented here.
+
+For full recomputation, place any one of the following in `data/`:
+
+1. `HI-Small_Trans.csv` downloaded from Kaggle;
+2. `HI-Small_Trans.csv.zip`; or
+3. the complete Kaggle download ZIP containing `HI-Small_Trans.csv`.
+
+If none is present, the core pipeline uses a Hugging Face mirror containing
+only the transaction ZIP. This mirror is a download fallback, not a different
+experimental dataset; Kaggle is the official cited source. Raw data are not
+bundled in the submission archive because `data/` is optional and the file is
+large.
 
 ## Quick Notebook Execution
 
@@ -71,7 +80,9 @@ clean_env\Scripts\python -m pip install -r requirements_zxszeto_group_IBM_AML.tx
 
 ## Full Pipeline Execution
 
-The raw dataset is required for full recomputation. Set `RUN_FULL_PIPELINE = True` in the notebook, or run:
+The raw transaction CSV is required for full recomputation. The Patterns TXT
+file is not read by the submitted code. Set `RUN_FULL_PIPELINE = True` in the
+notebook, or run these commands in order:
 
 ```bash
 python src/aml_project_pipeline.py

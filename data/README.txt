@@ -1,5 +1,19 @@
-Download HI-Small_Trans.csv.zip from the Kaggle IBM AML dataset if raw data are required.
+Official dataset: IBM Transactions for Anti Money Laundering on Kaggle
+https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml
 
-Only HI-Small_Trans.csv.zip is required to reproduce the final submitted experiments. It contains HI-Small_Trans.csv, whose transaction fields provide the timestamp, sender and receiver accounts, amounts, currencies, payment format, and Is Laundering label used by the project.
+The Kaggle release has six independent variants (HI/LI and Small/Medium/Large).
+Each variant has two files. HI-Small contains:
+  - HI-Small_Trans.csv
+  - HI-Small_Patterns.txt
 
-The original Kaggle dataset may also provide supplementary accounts and laundering-pattern files. They are optional for further exploration, but they are not required by the final notebook, report figures, clustering analysis, or supervised model results. The submitted graph-aware features are constructed directly from the From/To account fields in HI-Small_Trans.csv.
+This project reads only HI-Small_Trans.csv. Account-level features are derived
+from its Account and Account.1 columns; no separate account file is required.
+The Patterns file is optional and is not used in the submitted experiments.
+
+Accepted data layouts:
+  1. data/HI-Small_Trans.csv
+  2. data/HI-Small_Trans.csv.zip
+  3. a Kaggle download ZIP in data/ that contains HI-Small_Trans.csv
+
+If none is present, src/aml_project_pipeline.py downloads a Hugging Face mirror
+that contains only HI-Small_Trans.csv.zip. Kaggle remains the cited source.

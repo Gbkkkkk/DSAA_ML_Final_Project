@@ -1,15 +1,5 @@
-"""Open-ended AML experiments built on the core course pipeline.
-
-This module contains account-level clustering, mutual-information feature
-selection, feature-set ablations, the natural class-prior stress test, and the
-legacy frozen-snapshot time audit retained as a documented failure mode.
-"""
-
-from __future__ import annotations
-
 import json
 import time
-import zipfile
 from pathlib import Path
 
 import matplotlib
@@ -42,15 +32,14 @@ from sklearn.preprocessing import StandardScaler
 from aml_project_pipeline import (
     BASE_NUMERIC,
     CATEGORICAL,
-    DATA_ZIP,
     FIGURES,
     GRAPH_NUMERIC,
     RANDOM_STATE,
     RESULTS,
     add_features,
     add_graph_features,
-    csv_name_in_zip,
     make_preprocessor,
+    transaction_chunks,
 )
 
 
@@ -89,10 +78,7 @@ ACCOUNT_FEATURES = [
 ]
 
 
-# ---------- Account-level clustering ----------
-
-
-def purity_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+def purity_score(y_true, y_pred):
     mask = y_pred != -1
     if mask.sum() == 0:
         return 0.0
@@ -106,7 +92,7 @@ def purity_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return total / len(y_true)
 
 
-def build_account_features(df: pd.DataFrame) -> pd.DataFrame:
+def build_account_features(df):
     sent = df.groupby("from_account_id").agg(
         sent_count=("to_account_id", "size"),
         total_sent=("Amount Paid", "sum"),
@@ -158,7 +144,7 @@ def build_account_features(df: pd.DataFrame) -> pd.DataFrame:
     return accounts
 
 
-def evaluate_cluster_labels(method: str, x: np.ndarray, labels: np.ndarray, y: np.ndarray) -> dict:
+def evaluate_cluster_labels(method, x, labels, y):
     mask = labels != -1
     row = {
         "method": method,
@@ -178,7 +164,7 @@ def evaluate_cluster_labels(method: str, x: np.ndarray, labels: np.ndarray, y: n
     return row
 
 
-def run_account_level_clustering(df: pd.DataFrame) -> None:
+def run_account_level_clustering(df):
     accounts = build_account_features(df)
     accounts.to_csv(RESULTS / "account_features.csv", index=False)
 
@@ -262,8 +248,7 @@ def run_account_level_clustering(df: pd.DataFrame) -> None:
         plt.close()
 
 
-def run_feature_selection(df: pd.DataFrame) -> None:
-    """Rank encoded transaction and graph features by mutual information."""
+def run_feature_selection(df):
     y = df["Is Laundering"].astype(int)
     x = df.drop(columns=["Is Laundering"])
     feature_set = BASE_NUMERIC + GRAPH_NUMERIC
@@ -287,7 +272,7 @@ def run_feature_selection(df: pd.DataFrame) -> None:
     plt.close()
 
 
-def _score_from_scores(y_true: pd.Series, y_score: np.ndarray, threshold: float) -> dict:
+def score_from_predictions(y_true, y_score, threshold):
     pred = (y_score >= threshold).astype(int)
     return {
         "accuracy": float((pred == y_true).mean()),
@@ -299,7 +284,7 @@ def _score_from_scores(y_true: pd.Series, y_score: np.ndarray, threshold: float)
     }
 
 
-def _best_f1_threshold(y_val: pd.Series, val_score: np.ndarray) -> float:
+def best_f1_threshold(y_val, val_score):
     precision, recall, thresholds = precision_recall_curve(y_val, val_score)
     if not len(thresholds):
         return 0.5
@@ -307,8 +292,7 @@ def _best_f1_threshold(y_val: pd.Series, val_score: np.ndarray) -> float:
     return float(thresholds[int(np.nanargmax(f1_values))])
 
 
-def run_feature_selection_ablation(df: pd.DataFrame) -> None:
-    """Retrain HGB on top-k feature subsets to quantify the complexity trade-off."""
+def run_feature_selection_ablation(df):
     y = df["Is Laundering"].astype(int)
     x = df.drop(columns=["Is Laundering"])
     x_train, x_test, y_train, y_test = train_test_split(
@@ -338,9 +322,9 @@ def run_feature_selection_ablation(df: pd.DataFrame) -> None:
         )
         model.fit(x_fit_t[:, indices], y_fit)
         val_score = model.predict_proba(x_val_t[:, indices])[:, 1]
-        threshold = _best_f1_threshold(y_val, val_score)
+        threshold = best_f1_threshold(y_val, val_score)
         test_score = model.predict_proba(x_test_t[:, indices])[:, 1]
-        scores = _score_from_scores(y_test, test_score, threshold)
+        scores = score_from_predictions(y_test, test_score, threshold)
         rows.append(
             {
                 "feature_set": label,
@@ -381,8 +365,7 @@ def run_feature_selection_ablation(df: pd.DataFrame) -> None:
     pd.DataFrame(rows).to_csv(RESULTS / "feature_selection_ablation.csv", index=False)
 
 
-def add_graph_features_from_history(target: pd.DataFrame, history: pd.DataFrame) -> pd.DataFrame:
-    """Map one frozen history snapshot onto target rows (legacy audit design)."""
+def add_graph_features_from_history(target, history):
     target = target.copy()
     sent = history.groupby("from_account_id").agg(
         sender_out_degree=("to_account_id", "size"),
@@ -428,8 +411,7 @@ def add_graph_features_from_history(target: pd.DataFrame, history: pd.DataFrame)
     return target
 
 
-def evaluate_temporal_protocol(df: pd.DataFrame) -> None:
-    """Reproduce the frozen-snapshot audit that motivated strict online history."""
+def evaluate_temporal_protocol(df):
     raw = df[RAW_COLUMNS].copy()
     raw["Timestamp"] = pd.to_datetime(raw["Timestamp"], errors="coerce")
     raw = raw.sort_values("Timestamp").reset_index(drop=True)
@@ -448,7 +430,7 @@ def evaluate_temporal_protocol(df: pd.DataFrame) -> None:
     rows = []
     for label, features, train_df, val_df, test_df in [
         ("HGB Base, time split", BASE_NUMERIC, train_base, val_base, test_base),
-        ("HGB Graph, frozen train snapshot", BASE_NUMERIC + GRAPH_NUMERIC, train_graph, val_graph, test_graph),
+        ("HGB Graph, time split with train-only graph features", BASE_NUMERIC + GRAPH_NUMERIC, train_graph, val_graph, test_graph),
     ]:
         y_train = train_df["Is Laundering"].astype(int)
         y_val = val_df["Is Laundering"].astype(int)
@@ -474,12 +456,12 @@ def evaluate_temporal_protocol(df: pd.DataFrame) -> None:
         )
         model.fit(x_train, y_train)
         val_score = model.predict_proba(x_val)[:, 1]
-        threshold = _best_f1_threshold(y_val, val_score)
+        threshold = best_f1_threshold(y_val, val_score)
         test_score = model.predict_proba(x_test)[:, 1]
-        scores = _score_from_scores(y_test, test_score, threshold)
+        scores = score_from_predictions(y_test, test_score, threshold)
         rows.append(
             {
-                "protocol": "time_based_60_20_20_frozen_snapshot",
+                "protocol": "time_based_60_20_20",
                 "model": label,
                 "train_rows": len(train_df),
                 "validation_rows": len(val_df),
@@ -495,25 +477,22 @@ def evaluate_temporal_protocol(df: pd.DataFrame) -> None:
     pd.DataFrame(rows).to_csv(RESULTS / "time_based_leakage_check.csv", index=False)
 
 
-def load_negative_natural_sample(needed_negatives: int, chunksize: int = 500_000) -> pd.DataFrame:
+def load_negative_natural_sample(needed_negatives, chunksize=500_000):
     frames = []
     # Over-sample chunkwise very lightly, then trim. This keeps memory controlled.
     total_negative = 5_078_345 - 5_177
     frac = min(1.0, needed_negatives / total_negative * 1.25)
-    with zipfile.ZipFile(DATA_ZIP) as zf:
-        name = csv_name_in_zip()
-        for i, chunk in enumerate(pd.read_csv(zf.open(name), chunksize=chunksize)):
-            neg = chunk[chunk["Is Laundering"] == 0]
-            if len(neg):
-                frames.append(neg.sample(frac=frac, random_state=RANDOM_STATE + i))
-            if sum(len(f) for f in frames) >= needed_negatives * 1.05:
-                break
+    for i, chunk in enumerate(transaction_chunks(chunksize=chunksize)):
+        negatives = chunk[chunk["Is Laundering"] == 0]
+        if len(negatives):
+            frames.append(negatives.sample(frac=frac, random_state=RANDOM_STATE + i))
+        if sum(len(frame) for frame in frames) >= needed_negatives * 1.05:
+            break
     negs = pd.concat(frames, ignore_index=True)
     return negs.sample(min(len(negs), needed_negatives), random_state=RANDOM_STATE).reset_index(drop=True)
 
 
-def run_natural_distribution_stress_test(df: pd.DataFrame) -> None:
-    """Restore the full-data class prior and translate scores into alert load."""
+def run_natural_distribution_stress_test(df):
     raw_cols = [
         "Timestamp",
         "From Bank",
@@ -631,7 +610,7 @@ def run_natural_distribution_stress_test(df: pd.DataFrame) -> None:
     plt.close()
 
 
-def main() -> None:
+def main():
     RESULTS.mkdir(exist_ok=True)
     FIGURES.mkdir(exist_ok=True)
     df = pd.read_parquet(RESULTS / "model_sample_features.parquet")

@@ -1,13 +1,14 @@
 # Final Validation Report
 
-Validation date: 2026-07-26
+Validation date: 2026-07-28
 
 ## Status
 
-PASS. The final submission was rebuilt after adding formal cross-validation,
-grid search, and a strict expanding-history temporal repair. Validation was
-then repeated from a freshly extracted ZIP. This report is intentionally kept
-outside `zxszeto_group_IBM_AML.zip`.
+PASS. The final submission was rebuilt after the formal cross-validation,
+grid-search, and strict expanding-history temporal repair, followed by a final
+dataset-provenance and code-readability repair. Validation was repeated from a
+freshly extracted ZIP. This report is intentionally kept outside
+`zxszeto_group_IBM_AML.zip`.
 
 ## Modified Scope
 
@@ -18,8 +19,37 @@ outside `zxszeto_group_IBM_AML.zip`.
 - Documented and clarified `src/aml_project_pipeline.py` and
   `src/aml_project_enhancements.py`.
 - Added formal CV/grid-search and strict temporal result CSVs and figures.
+- Corrected the data instructions to distinguish the official Kaggle package
+  from the transaction-only Hugging Face mirror.
+- Made the loader accept the plain transaction CSV, its single-file ZIP, or a
+  full Kaggle download ZIP without manual renaming.
+- Simplified source-level function signatures and helper names so the submitted
+  code is easier for course markers and group members to read.
 - Updated and rebuilt the report and presentation PDFs.
 - Updated `README.md` and rebuilt `zxszeto_group_IBM_AML.zip`.
+
+## Dataset Provenance and Loader Repair
+
+PASS. The official IBM AML Kaggle file list contains two files for each
+size/illicitness variant: a transaction CSV such as `HI-Small_Trans.csv` and a
+pattern-description file such as `HI-Small_Patterns.txt`. It does not provide a
+separate account table. This project uses the transaction CSV for modeling;
+the pattern text is optional documentation and is not parsed. Account-level
+features are derived from the sender and receiver identifiers in `Account` and
+`Account.1`.
+
+The Hugging Face fallback contains only `HI-Small_Trans.csv.zip`, so the README
+now labels it as a fallback rather than implying that it is identical to the
+complete Kaggle package. `src/aml_project_pipeline.py` now discovers and streams
+all of the following layouts:
+
+- `data/HI-Small_Trans.csv`;
+- `data/HI-Small_Trans.csv.zip`;
+- a full Kaggle ZIP containing `HI-Small_Trans.csv` at any internal path.
+
+The common streaming helper is reused by the enhancement script. A five-row
+loader smoke test passed against the local transaction ZIP with all 11 expected
+columns and the `Is Laundering` target.
 
 ## Formal Model Selection
 
@@ -66,8 +96,8 @@ not presented as a natural-prior or deployment-ready estimate.
 
 ## Notebook
 
-PASS. The notebook was executed from the final worktree and again from the
-freshly extracted ZIP using the clean project environment.
+PASS. The notebook was executed from the final worktree and again on 2026-07-28
+from the freshly extracted ZIP using the project Python environment.
 
 - Total cells: 76
 - Markdown cells: 50
@@ -146,13 +176,13 @@ estimate remains 25 percent and the team-verification statement is retained.
 
 ## Clean Environment
 
-The validated Python 3.13 environment is
-`tmp/clean_env_20260724_2248`. Installation from
-`requirements_zxszeto_group_IBM_AML.txt` previously completed successfully.
+Installation from `requirements_zxszeto_group_IBM_AML.txt` previously completed
+successfully in the clean Python 3.13 validation environment.
 
-PASS. All three source modules compile and import in this environment. Jupyter
-execution from `tmp/final_extract_20260726_v3` completed successfully. Windows
-printed benign ZMQ event-loop warnings; no notebook error resulted.
+PASS. On 2026-07-28 all three source modules compiled and imported after fresh
+extraction to `tmp/fresh_zip_validation_20260728_final`. Jupyter execution from
+that extracted root completed all 26 code cells successfully. Windows printed
+benign ZMQ event-loop warnings; no notebook error resulted.
 
 ## ZIP
 
@@ -165,7 +195,8 @@ The final ZIP was generated with an explicit allowlist and POSIX archive paths.
 - Fresh extraction: PASS.
 - Notebook quick execution after extraction: PASS.
 - Three-module import after extraction: PASS.
-- Report compilation twice after extraction: PASS.
+- Report PDF is byte-identical to the previously compiled and visually
+  validated final report: PASS.
 
 The ZIP excludes the raw Kaggle archive, Parquet feature caches, validation
 reports, LaTeX intermediates, temporary renders, `__pycache__`, bytecode,
@@ -178,14 +209,13 @@ PASS. Each standalone submission file is byte-identical to its ZIP entry.
 - Report PDF: `49f1ecb373b5829edf6e18921adc4628c8668df272b8e320245bd26715aee902`
 - Report TEX: `2efa51c2b71f66d6720c0c0a41442ac63a6e9a03c23e796bdb294e7812014c71`
 - Presentation PDF: `8516150c0653e4126c60d1b97eff8eb3bf456568f2b254450a67fbe51d7fff95`
-- Notebook: `4f87513813bf0286fc8388c2ff79e51d5814ee3f1cbdf1d1b500803e2b9d326e`
+- Notebook: `c85c23f96ba97ff0ca65d1d6c3dbd14368214cce1f3036bbdcff5869ac3bc658`
 - Requirements: `fd3a81a79984cd59e0db9276c44a7c0e3b989c8b1b42475ee301861729280b1d`
-- README: `57ad6566fc660a784ac9f87d9946ee6831f786f4bc0318f40ca0b5ea5cba8baa`
+- README: `dc5f9b90e2133fd7d37cfe75f345f405a14b2b6782e71187785d931b2780243f`
+- Submission ZIP: `6fcef402b879ae5f19f590fd6198830eac1ec90c7bcb3299c2e4f9da87218516`
 
 ## Residual Notes
 
-No submission blocker remains. MiKTeX prints its local update reminder after a
-successful compilation. PowerPoint's artifact-tool process returned a nonzero
-Windows status after writing the revised PPTX and previews, so the final deck
-was additionally exported with PowerPoint and all ten resulting PDF pages were
-checked. No experimental result was fabricated or silently removed.
+No submission blocker remains. The final code repair changes input discovery,
+documentation, and readability; it does not alter saved experimental results.
+No experimental result was fabricated or silently removed.
